@@ -13,6 +13,8 @@ data App (f :: Type -> *) (tp :: Type) where
     BoolXor :: !(f TBool) -> !(f TBool) -> App f TBool
     BoolNot :: !(f TBool) -> App f TBool
 
+    -- TODO tuples using CtxReprs
+
 data Expr tp = Expr !(App Expr tp) | AtomExpr !(Atom tp)
 
 typeOf :: Expr tp -> TypeRepr tp

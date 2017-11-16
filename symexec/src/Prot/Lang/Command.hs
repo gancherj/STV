@@ -7,6 +7,7 @@ import Prot.Lang.Expr
 data Distr tp = Distr { distrName :: String, distrType :: TypeRepr tp }
 
 data Command tp where
+    -- TODO sampl needs to take in an argument
     Sampl :: forall tp tp2. String -> Distr tp2 -> Command tp -> Command tp
     Let :: forall tp tp2. String -> Expr tp2 -> Command tp -> Command tp
     Ite :: forall tp. Expr TBool -> Command tp -> Command tp -> Command tp
