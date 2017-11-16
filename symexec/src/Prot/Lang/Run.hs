@@ -44,7 +44,7 @@ runCommand_ emap (Sampl x (Distr dn TBoolRepr) k) = do
     line <- getLine
     runCommand_ (Map.insert x (SomeInterp TBoolRepr (read line)) emap) k
 
-runCommand_ emap (Let x tr e k) = runCommand_ (Map.insert x (SomeInterp tr (evalExpr emap e)) emap) k
+runCommand_ emap (Let x e k) = runCommand_ (Map.insert x (SomeInterp (typeOf e) (evalExpr emap e)) emap) k
 runCommand_ emap (Ite b c1 c2) = case (evalExpr emap b) of
                                    True -> runCommand_ emap c1
                                    False -> runCommand_ emap c2

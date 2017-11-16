@@ -62,8 +62,9 @@
         \item $e \equiv e$ in the equational theory
         \item there exists $\Sigma_0$ such that $\Sigma \cap \Sigma' = \Sigma_0$, $FV(\Phi) = FV(\Phi') \subseteq \Sigma_0$, and $\Phi \iff \Phi'$.
     \end{itemize}
+    
 
-    Then, say that $E(P) \equiv E(P')$ if $E(P)$ and $E(P')$ are of the same size, and there exists a bijection $\sigma$ such that for all $i$, $E(P)_i \equiv E(P')_{\sigma(i)}$. The proof for soundness is by induction on the structure of $P$; if $P$ has no if statements, then both $E(P)$ and $E(P')$ have size one, so the result is trivial. If $P$ has an if statement, then since $E(P) \equiv E(P')$, $P'$ must have an equivalent if statement somewhere else in its program, which can safely be moved to the top level, at which point the result is by induction.
+    Then, say that $E(P) \equiv E(P')$ if $E(P)$ and $E(P')$ are of the same size, and there exists a bijection $\sigma$ such that for all $i$, $E(P)_i \equiv E(P')_{\sigma(i)}$. (I.e., there exists a perfect matching in the bipartite graph induced by $\equiv$.) The proof for soundness is by induction on the structure of $P$; if $P$ has no if statements, then both $E(P)$ and $E(P')$ have size one, so the result is trivial. If $P$ has an if statement, then since $E(P) \equiv E(P')$, $P'$ must have an equivalent if statement somewhere else in its program, which can safely be moved to the top level, at which point the result is by induction.
     
 
 \end{document}
