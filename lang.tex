@@ -1,0 +1,69 @@
+\documentclass{article}
+
+\usepackage{amsmath, amssymb, amsthm}
+\usepackage{stmaryrd}
+\usepackage{syntax}
+
+\newcommand{\eif}{\textsf{if}\ }
+\newcommand{\ethen}{\textsf{then}\ }
+\newcommand{\eelse}{\textsf{else}\ }
+\newcommand{\eret}{\textsf{ret}\ }
+
+
+\begin{document}
+
+    \subsection*{Deterministic message passing system}
+
+    \begin{grammar}
+
+        <stmt> ::= <ident> $\to$ <ident> | out <ident> 
+
+        <system> ::= <stmt>;<system> | nil
+
+    \end{grammar}
+
+    \subsection*{Probabilistic programming language}
+
+    \begin{grammar}
+        <stmt> ::= $x \leftarrow D$ <expr> | $x := $ <expr> | \textsf{if} <expr> \textsf{then} <stmt> \textsf{else} <stmt> \alt <stmt> ; <stmt> | \eret <expr>
+
+        <expr> ::= $x$ | $n$ | <expr> $\oplus$ <expr>
+
+    \end{grammar}
+
+
+    \subsection*{Denotational Semantics}
+
+    Programs $P$ have a straightforward corresponding denotational semantics as functions from states to distributions on states. Complete programs $P$ in turn inherit a denotational semantics of distributions $\llbracket P \rrbracket$ on return values. Our task is to determine whether two programs $P$ and $P'$ are related distributions. 
+    
+
+    An execution of a protocol can be thought of as two programs $P$ and $P'$, of type $\alpha \rightarrow \beta \rightarrow (\textit{Msg} \rightarrow \gamma \rightarrow D(\textit{Msg} * \gamma)) \rightarrow \delta$.
+
+
+
+    \subsection*{Symbolic Execution}
+
+    A symbolic state is defined to be a tuple $(P, \Sigma, \Phi)$, where $P$ is a program, $\Sigma$ is a DAG of samplings, and $\Phi$ is a collection of path conditions. A symbolic execution $E$ from states to multisets of states is defined as follows:
+    \begin{align*}
+        E(x \leftarrow D\ e; P, \Sigma, \Phi) &= E(P, \Sigma \cup \{x \leftarrow D e\}, \Phi \cup \{\phi_D(x)\}) \text{ where $x$ must be fresh } \\
+        E(x := e; P, \Sigma, \Phi) &= E(P, \Sigma \cup \{x := D\}, \Phi) \text{ where $x$ must be fresh} \\
+        E(\eif e\ \ethen P\ \eelse P'; P, \Sigma, \Phi) &= E(P, \Sigma, \Phi \cup \{e\}) \cup E(P', \Sigma, \Phi \cup \{\neg e\}) \\
+        E(\eret e, \Sigma, \Phi) &= (\eret e, \Sigma, \Phi)
+    \end{align*}
+
+
+        
+    Above, $\phi_D(x)$ is a logical formula expressing that $x$ is in the support of $D$. Given two programs $P$ and $P'$, we first symbolically execute them to recieve state sets $E(P) = \{(P_i, \Sigma_i, \Phi_i)\}$ and $E(P') = \{(P'_i, \Sigma'_i, \Phi'_i)\}$. This transformation is lossless.
+
+    Now, we wish to define $\equiv$ such that $E(P) \equiv E(P') \implies \llbracket P \rrbracket = \llbracket P' \rrbracket$.
+
+    The weakest $\equiv$ is as follows: say that $(\eret e, \Sigma, \Phi) \equiv (\eret e', \Sigma', \Phi')$ when
+    \begin{itemize}
+        \item $e \equiv e$ in the equational theory
+        \item there exists $\Sigma_0$ such that $\Sigma \cap \Sigma' = \Sigma_0$, $FV(\Phi) = FV(\Phi') \subseteq \Sigma_0$, and $\Phi \iff \Phi'$.
+    \end{itemize}
+
+    Then, say that $E(P) \equiv E(P')$ if $E(P)$ and $E(P')$ are of the same size, and there exists a bijection $\sigma$ such that for all $i$, $E(P)_i \equiv E(P')_{\sigma(i)}$. The proof for soundness is by induction on the structure of $P$; if $P$ has no if statements, then both $E(P)$ and $E(P')$ have size one, so the result is trivial. If $P$ has an if statement, then since $E(P) \equiv E(P')$, $P'$ must have an equivalent if statement somewhere else in its program, which can safely be moved to the top level, at which point the result is by induction.
+    
+
+\end{document}
