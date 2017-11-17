@@ -13,6 +13,13 @@ data App (f :: Type -> *) (tp :: Type) where
     BoolXor :: !(f TBool) -> !(f TBool) -> App f TBool
     BoolNot :: !(f TBool) -> App f TBool
 
+    IntLe :: !(f TInt) -> !(f TInt) -> App f TBool
+    IntLt :: !(f TInt) -> !(f TInt) -> App f TBool
+    IntGt :: !(f TInt) -> !(f TInt) -> App f TBool
+    IntEq :: !(f TInt) -> !(f TInt) -> App f TBool
+    IntNeq :: !(f TInt) -> !(f TInt) -> App f TBool
+
+
     -- TODO tuples using CtxReprs
 
 data Expr tp = Expr !(App Expr tp) | AtomExpr !(Atom tp)
@@ -39,4 +46,27 @@ mkAtom s tr = AtomExpr $ Atom s tr
 
 data SomeExp = forall tp. SomeExp (TypeRepr tp) (Expr tp)
 
+ppSomeExp :: SomeExp -> String
+ppSomeExp (SomeExp _ e) = ppExpr e
 
+mkSomeExp :: Expr tp -> SomeExp
+mkSomeExp e = SomeExp (typeOf e) e
+
+ppExpr :: Expr tp -> String
+ppExpr (AtomExpr (Atom x _)) = x
+ppExpr (Expr (IntLit i)) = show i
+ppExpr (Expr (IntAdd e1 e2)) = (ppExpr e1) ++ " + " ++ (ppExpr e2)
+ppExpr (Expr (IntMul e1 e2)) = (ppExpr e1) ++ " * " ++ (ppExpr e2)
+ppExpr (Expr (IntNeg e1)) = "-" ++ (ppExpr e1) 
+
+ppExpr (Expr (BoolLit e1)) = show e1
+ppExpr (Expr (BoolAnd e1 e2)) = (ppExpr e1) ++ " /\\ " ++ (ppExpr e2)
+ppExpr (Expr (BoolOr e1 e2)) = (ppExpr e1) ++ " \\/ " ++ (ppExpr e2)
+ppExpr (Expr (BoolXor e1 e2)) = (ppExpr e1) ++ " + " ++ (ppExpr e2)
+ppExpr (Expr (BoolNot e1 )) = "not " ++ (ppExpr e1) 
+
+ppExpr (Expr (IntLe e1 e2)) = (ppExpr e1) ++ " <= " ++ (ppExpr e2)
+ppExpr (Expr (IntLt e1 e2)) = (ppExpr e1) ++ " < " ++ (ppExpr e2)
+ppExpr (Expr (IntGt e1 e2)) = (ppExpr e1) ++ " >= " ++ (ppExpr e2)
+ppExpr (Expr (IntEq e1 e2)) = (ppExpr e1) ++ " == " ++ (ppExpr e2)
+ppExpr (Expr (IntNeq e1 e2)) = (ppExpr e1) ++ " != " ++ (ppExpr e2)

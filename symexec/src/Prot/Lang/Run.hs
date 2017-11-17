@@ -35,11 +35,11 @@ evalExpr emap (Expr (BoolNot e1 )) = not (evalExpr emap e1)
 
 
 runCommand_ :: Map.Map String (SomeInterp) -> Command tp -> IO (TInterp tp)
-runCommand_ emap (Sampl x (Distr dn TIntRepr) k) = do
+runCommand_ emap (Sampl x (SymDistr dn TIntRepr) ls k) = do
     putStrLn $ x ++ " <- " ++ dn ++ ":"
     line <- getLine
     runCommand_ (Map.insert x (SomeInterp TIntRepr (read line)) emap) k
-runCommand_ emap (Sampl x (Distr dn TBoolRepr) k) = do
+runCommand_ emap (Sampl x (SymDistr dn TBoolRepr) ls k) = do
     putStr $ x ++ " <- " ++ dn ++ ":"
     line <- getLine
     runCommand_ (Map.insert x (SomeInterp TBoolRepr (read line)) emap) k
