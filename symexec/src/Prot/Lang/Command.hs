@@ -12,6 +12,12 @@ data Distr tp where
 ppDistr :: Distr tp -> String
 ppDistr (SymDistr x _) = x
 
+instance TypeOf Distr where
+    typeOf (SymDistr x t) = t
+    typeOf (UnifInt _ _) = TIntRepr
+    typeOf (UnifBool) = TBoolRepr
+
+
 data Command tp where
     Sampl :: forall tp tp2. String -> Distr tp2 -> [SomeExp] -> Command tp -> Command tp
     Let :: forall tp tp2. String -> Expr tp2 -> Command tp -> Command tp

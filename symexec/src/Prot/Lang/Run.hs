@@ -8,7 +8,7 @@ import Data.Map.Strict as Map
 
 
 type family TInterp (tp :: Type) :: * where
-    TInterp TInt = Int
+    TInterp TInt = Integer
     TInterp TBool = Bool
 
 data SomeInterp = forall tp. SomeInterp (TypeRepr tp) (TInterp tp)

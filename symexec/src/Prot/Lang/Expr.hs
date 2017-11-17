@@ -1,8 +1,11 @@
 module Prot.Lang.Expr where
 import Prot.Lang.Types
 
+class TypeOf (k :: Type -> *) where
+    typeOf :: forall tp. k tp -> TypeRepr tp
+
 data App (f :: Type -> *) (tp :: Type) where
-    IntLit :: !Int -> App f TInt
+    IntLit :: !Integer -> App f TInt
     IntAdd :: !(f TInt) -> !(f TInt) -> App f TInt
     IntMul :: !(f TInt) -> !(f TInt) -> App f TInt
     IntNeg :: !(f TInt) -> App f TInt
@@ -20,21 +23,21 @@ data App (f :: Type -> *) (tp :: Type) where
     IntNeq :: !(f TInt) -> !(f TInt) -> App f TBool
 
 
-    -- TODO tuples using CtxReprs
 
 data Expr tp = Expr !(App Expr tp) | AtomExpr !(Atom tp)
 
-typeOf :: Expr tp -> TypeRepr tp
-typeOf (AtomExpr (Atom _ t)) = t
-typeOf (Expr (IntLit _)) = TIntRepr
-typeOf (Expr (IntAdd _ _)) = TIntRepr
-typeOf (Expr (IntMul _ _)) = TIntRepr
-typeOf (Expr (IntNeg _)) = TIntRepr
-typeOf (Expr (BoolLit _)) = TBoolRepr
-typeOf (Expr (BoolNot _)) = TBoolRepr
-typeOf (Expr (BoolAnd _ _)) = TBoolRepr
-typeOf (Expr (BoolOr _ _)) = TBoolRepr
-typeOf (Expr (BoolXor _ _)) = TBoolRepr
+instance TypeOf Expr where
+
+    typeOf (AtomExpr (Atom _ t)) = t
+    typeOf (Expr (IntLit _)) = TIntRepr
+    typeOf (Expr (IntAdd _ _)) = TIntRepr
+    typeOf (Expr (IntMul _ _)) = TIntRepr
+    typeOf (Expr (IntNeg _)) = TIntRepr
+    typeOf (Expr (BoolLit _)) = TBoolRepr
+    typeOf (Expr (BoolNot _)) = TBoolRepr
+    typeOf (Expr (BoolAnd _ _)) = TBoolRepr
+    typeOf (Expr (BoolOr _ _)) = TBoolRepr
+    typeOf (Expr (BoolXor _ _)) = TBoolRepr
 
 
 

@@ -14,6 +14,10 @@ type TBool = 'TBool
 data TypeRepr (t :: Type) :: * where
     TIntRepr :: TypeRepr TInt
     TBoolRepr :: TypeRepr TBool
+
+instance Show (TypeRepr tp) where
+    show TIntRepr = "TInt"
+    show TBoolRepr = "TBool"
     
 instance KnownRepr TypeRepr TInt where
     knownRepr = TIntRepr
@@ -26,8 +30,3 @@ instance TestEquality TypeRepr where
     testEquality TBoolRepr TBoolRepr = Just Refl
     testEquality _ _ = Nothing
 
-instance Show (TypeRepr TInt) where
-    show t = "Int"
-
-instance Show (TypeRepr TBool) where
-    show t = "bool"

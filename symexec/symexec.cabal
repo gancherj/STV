@@ -19,8 +19,9 @@ executable symexec
   default-language:    Haskell2010
   build-depends:       base >= 4.7 && < 5,
                        parameterized-utils,
-                       containers
+                       containers,
+                       sbv
 
-  other-modules: Prot.Lang.Expr, Prot.Lang.Types, Prot.Lang.Command, Prot.Lang.Run
+  other-modules: Prot.Lang.Expr, Prot.Lang.Types, Prot.Lang.Command, Prot.Lang.Run, Prot.Lang.Analyze, Prot.Lang.SMT
 
-  extensions: FlexibleInstances, GADTs, GeneralizedNewtypeDeriving, KindSignatures, TemplateHaskell, TypeOperators, TypeSynonymInstances, MultiParamTypeClasses, FunctionalDependencies, ScopedTypeVariables, UndecidableInstances, ConstraintKinds, DataKinds, PolyKinds, EmptyDataDecls, TypeFamilies, RankNTypes, ExistentialQuantification, FlexibleContexts
+  default-extensions: FlexibleInstances, GADTs, GeneralizedNewtypeDeriving, KindSignatures, TemplateHaskell, TypeOperators, TypeSynonymInstances, MultiParamTypeClasses, FunctionalDependencies, ScopedTypeVariables, UndecidableInstances, ConstraintKinds, DataKinds, PolyKinds, EmptyDataDecls, TypeFamilies, RankNTypes, ExistentialQuantification, FlexibleContexts
