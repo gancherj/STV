@@ -1,5 +1,6 @@
 module Prot.Lang.Expr where
 import Prot.Lang.Types
+import Data.SBV
 
 class TypeOf (k :: Type -> *) where
     typeOf :: forall tp. k tp -> TypeRepr tp
@@ -73,3 +74,23 @@ ppExpr (Expr (IntLt e1 e2)) = (ppExpr e1) ++ " < " ++ (ppExpr e2)
 ppExpr (Expr (IntGt e1 e2)) = (ppExpr e1) ++ " >= " ++ (ppExpr e2)
 ppExpr (Expr (IntEq e1 e2)) = (ppExpr e1) ++ " == " ++ (ppExpr e2)
 ppExpr (Expr (IntNeq e1 e2)) = (ppExpr e1) ++ " != " ++ (ppExpr e2)
+
+---
+-- instances
+
+instance Num (Expr TInt) where
+    e1 + e2 = Expr (IntAdd e1 e2)
+    e1 * e2 = Expr (IntMul e1 e2)
+    signum e = error "signum unimp"
+    abs e = error "abs unimp"
+    fromInteger i = Expr (IntLit i)
+    negate e = Expr (IntNeg e)
+
+(|<|) :: Expr TInt -> Expr TInt -> Expr TBool
+e1 |<| e2 = Expr (IntLt e1 e2)
+
+(|>|) :: Expr TInt -> Expr TInt -> Expr TBool
+e1 |>| e2 = Expr (IntGt e1 e2)
+
+(|<=|) :: Expr TInt -> Expr TInt -> Expr TBool
+e1 |<=| e2 = Expr (IntLe e1 e2)

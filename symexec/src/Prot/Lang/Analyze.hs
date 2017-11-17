@@ -31,7 +31,7 @@ commandToLeaves cmd =
           map (\(Leaf samps lets conds ret) -> Leaf samps ((x, (mkSomeExp e)):lets) conds ret) lvs
       Sampl x d args k ->
           let lvs = commandToLeaves k in
-          map (\(Leaf samps lets conds ret) -> Leaf ((Sampling d x args):samps) lets conds ret) lvs
+          map (\(Leaf samps lets conds ret) -> Leaf ((Sampling d x args):samps) lets ((getConds x args d) ++ conds) ret) lvs
       Ite b c1 c2 ->
           let lvs1 = commandToLeaves c1 
               lvs2 = commandToLeaves c2

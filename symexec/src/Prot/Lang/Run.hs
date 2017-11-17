@@ -40,11 +40,11 @@ evalExpr emap (Expr (IntEq e1 e2)) = (evalExpr emap e1) == (evalExpr emap e2)
 evalExpr emap (Expr (IntNeq e1 e2)) = not $ (evalExpr emap e1) == (evalExpr emap e2)
 
 runCommand_ :: Map.Map String (SomeInterp) -> Command tp -> IO (TInterp tp)
-runCommand_ emap (Sampl x (SymDistr dn TIntRepr) ls k) = do
+runCommand_ emap (Sampl x (SymDistr dn TIntRepr dconds) ls k) = do
     putStrLn $ x ++ " <- " ++ dn ++ ":"
     line <- getLine
     runCommand_ (Map.insert x (SomeInterp TIntRepr (read line)) emap) k
-runCommand_ emap (Sampl x (SymDistr dn TBoolRepr) ls k) = do
+runCommand_ emap (Sampl x (SymDistr dn TBoolRepr dcs) ls k) = do
     putStr $ x ++ " <- " ++ dn ++ ":"
     line <- getLine
     runCommand_ (Map.insert x (SomeInterp TBoolRepr (read line)) emap) k

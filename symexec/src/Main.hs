@@ -5,24 +5,30 @@ import Prot.Lang.Command
 import Prot.Lang.Run
 import Prot.Lang.Analyze
 import Prot.Lang.SMT
+import Prot.Lang.Builder
+import Control.Monad.Except
 
 
 
-tstCommand :: Command TInt
+tstCommand :: [Builder]
 tstCommand =
-    let x = mkAtom "x" TIntRepr in
-    cSampl "x" (SymDistr "D" TIntRepr) [] $
-    cIte (Expr (IntLe x (Expr $ IntLit 5)))
-        (cIte (Expr (IntGt x (Expr $ IntLit 7))) (cRet (Expr (IntAdd x (Expr (IntLit 2))))) (cRet (Expr (IntAdd x (Expr (IntLit 2))))))
-        (cRet (Expr (IntMul x (Expr (IntLit 3)))))
-
-
+    let x = mkAtom "x" TIntRepr 
+        d = mkDistr "x" TIntRepr (\_ _ -> []) in
+    [bSampl "x" d [],
+     bIte (x |<=| 5) [
+        bIte (x |>| 7) [bRet (x + 2)] [bRet (x + 2)]
+     ] [
+         bRet (x * 3)
+     ]
+    ]
 
 main :: IO ()
 main = do
-  leavesSat <- mapM leafSatisfiable (commandToLeaves tstCommand)
-  putStrLn $ show leavesSat
-  putStrLn (ppCommand tstCommand)
-  putStrLn (ppLeaves $ commandToLeaves tstCommand)
-  putStrLn . show =<< runCommand tstCommand
-  putStrLn . show =<< runCommand tstCommand
+  let cmd' = runExcept $ bTrans tstCommand
+  case cmd' of
+    Left e -> putStrLn $ show e
+    Right (SomeCommand tr cmd) -> do
+      leavesSat <- mapM leafSatisfiable (commandToLeaves cmd)
+      putStrLn $ show leavesSat
+      putStrLn (ppCommand cmd)
+      putStrLn (ppLeaves $ commandToLeaves cmd)
