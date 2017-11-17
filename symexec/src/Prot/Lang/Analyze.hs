@@ -2,16 +2,25 @@ module Prot.Lang.Analyze where
 import Prot.Lang.Command
 import Prot.Lang.Types
 import Prot.Lang.Expr
+import Data.List
 
 data Sampling = forall tp. Sampling { _sampdistr :: Distr tp, _sampname :: String, _sampargs :: [SomeExp] }
+
+ppSampling :: Sampling -> String
+ppSampling (Sampling d x es) = x ++ " <- " ++ (ppDistr d) ++ (concatMap ppSomeExp es) 
 
 data Leaf ret where
     Leaf :: { 
         _leafSamps :: [Sampling],
         _leafLets :: [(String, SomeExp)],
         _leafConds :: [Expr TBool],
-        _leafRet :: Expr ret} -> Leaf ret
+        _leafRet :: Expr ret} -> Leaf ret 
 
+ppLeaf :: Leaf ret -> String
+ppLeaf (Leaf samps lets conds ret) = "Samplings: " ++ (concatMap ppSampling samps) ++ "\n Lets: " ++ (concatMap (\(x, e) -> x ++ " <- " ++ (ppSomeExp e) ++ "\n") lets) ++ "\n Conds:" ++  (concatMap ppExpr conds) ++ "\n Ret: " ++ (ppExpr ret) ++ "\n \n"
+
+ppLeaves :: [Leaf ret] -> String
+ppLeaves e = concatMap ppLeaf e
 
 commandToLeaves :: Command rtp -> [Leaf rtp]
 commandToLeaves cmd =

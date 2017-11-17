@@ -32,7 +32,7 @@ cRet = Ret
 
 ppCommand :: Command tp -> String
 ppCommand (Sampl x d args k) =
-    x ++ " <- " ++ (ppDistr d) ++ show (map ppSomeExp args) ++ ";\n" ++ (ppCommand k)
+    x ++ " <- " ++ (ppDistr d) ++ concatMap ppSomeExp args ++ ";\n" ++ (ppCommand k)
 ppCommand (Let x e k) =
     "let " ++ x ++ " = " ++ (ppExpr e) ++ ";\n" ++ (ppCommand k)
 ppCommand (Ite b e1 e2) =

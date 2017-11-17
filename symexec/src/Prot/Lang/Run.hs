@@ -33,6 +33,11 @@ evalExpr emap (Expr (BoolOr b1 b2)) = (evalExpr emap b1) || (evalExpr emap b2)
 evalExpr emap (Expr (BoolXor b1 b2)) = not $ (evalExpr emap b1) == (evalExpr emap b2)
 evalExpr emap (Expr (BoolNot e1 )) = not (evalExpr emap e1) 
 
+evalExpr emap (Expr (IntLe e1 e2)) = (evalExpr emap e1) <= (evalExpr emap e2)
+evalExpr emap (Expr (IntLt e1 e2)) = (evalExpr emap e1) < (evalExpr emap e2)
+evalExpr emap (Expr (IntGt e1 e2)) = (evalExpr emap e1) > (evalExpr emap e2)
+evalExpr emap (Expr (IntEq e1 e2)) = (evalExpr emap e1) == (evalExpr emap e2)
+evalExpr emap (Expr (IntNeq e1 e2)) = not $ (evalExpr emap e1) == (evalExpr emap e2)
 
 runCommand_ :: Map.Map String (SomeInterp) -> Command tp -> IO (TInterp tp)
 runCommand_ emap (Sampl x (SymDistr dn TIntRepr) ls k) = do
