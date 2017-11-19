@@ -1,6 +1,8 @@
 module Prot.Lang.Expr where
 import Prot.Lang.Types
 import Data.SBV
+import Data.Type.Equality
+import qualified Data.Map.Strict as Map
 
 class TypeOf (k :: Type -> *) where
     typeOf :: forall tp. k tp -> TypeRepr tp
@@ -94,3 +96,48 @@ e1 |>| e2 = Expr (IntGt e1 e2)
 
 (|<=|) :: Expr TInt -> Expr TInt -> Expr TBool
 e1 |<=| e2 = Expr (IntLe e1 e2)
+
+
+--- expr utility functions
+ --
+
+-- perform substitutions according to map. guarantees result expr is free of names in substitutions.
+--
+runFor :: Int -> (a -> a) -> a -> a
+runFor 0 f a = a
+runFor i f a = runFor (i - 1) f (f a)
+
+exprSub :: Map.Map String SomeExp -> Expr tp -> Expr tp
+exprSub emap e = runFor (Map.size emap) (go emap) e
+    where go :: Map.Map String SomeExp -> Expr tp -> Expr tp
+          go emap (AtomExpr (Atom x tp)) =
+              case (Map.lookup x emap) of
+                Just (SomeExp tp2 e) ->
+                    case (testEquality tp tp2) of
+                      Just Refl -> e
+                      Nothing -> error "type error"
+                Nothing -> error "var not found"
+          go emap (Expr (IntLit i)) = Expr (IntLit i)
+          go emap (Expr (IntAdd e1 e2)) = Expr (IntAdd (go emap e1) (go emap e2))
+          go emap (Expr (IntMul e1 e2)) = Expr (IntMul (go emap e1) (go emap e2))
+          go emap (Expr (IntNeg e1)) = Expr (IntNeg (go emap e1))
+
+          go emap (Expr (BoolLit b)) = Expr (BoolLit b)
+          go emap (Expr (BoolAnd e1 e2)) = Expr (BoolAnd (go emap e1) (go emap e2))
+          go emap (Expr (BoolOr e1 e2)) = Expr (BoolOr (go emap e1) (go emap e2))
+          go emap (Expr (BoolXor e1 e2)) = Expr (BoolXor (go emap e1) (go emap e2))
+          go emap (Expr (BoolNot e1 )) = Expr (BoolNot (go emap e1))
+    
+          go emap (Expr (IntLe e1 e2)) = Expr (IntLe (go emap e1) (go emap e2))
+          go emap (Expr (IntLt e1 e2)) = Expr (IntLt (go emap e1) (go emap e2))
+          go emap (Expr (IntGt e1 e2)) = Expr (IntGt (go emap e1) (go emap e2))
+          go emap (Expr (IntEq e1 e2)) = Expr (IntEq (go emap e1) (go emap e2))
+          go emap (Expr (IntNeq e1 e2)) = Expr (IntNeq (go emap e1) (go emap e2))
+
+someExprSub :: Map.Map String SomeExp -> SomeExp -> SomeExp
+someExprSub emap e1 = 
+    case e1 of
+      (SomeExp tp e) ->
+          SomeExp tp (exprSub emap e)
+
+

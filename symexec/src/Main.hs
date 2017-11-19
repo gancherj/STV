@@ -28,7 +28,7 @@ main = do
   case cmd' of
     Left e -> putStrLn $ show e
     Right (SomeCommand tr cmd) -> do
-      leavesSat <- mapM leafSatisfiable (commandToLeaves cmd)
+      leavesSat <- mapM leafSatisfiable (map unfoldLets $ commandToLeaves cmd)
       putStrLn $ show leavesSat
       putStrLn (ppCommand cmd)
       putStrLn (ppLeaves $ commandToLeaves cmd)
