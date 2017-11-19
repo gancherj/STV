@@ -1,11 +1,14 @@
-module Prot.Lang.Builder where
+module Prot.Lang.Lang where
 import Prot.Lang.Command
 import Prot.Lang.Expr
 import Prot.Lang.Types
+import Prot.Lang.Analyze
 import Control.Monad.Except
 import Data.Type.Equality
 import Data.Parameterized.Some
 import Control.Monad.State
+import qualified Prot.Lang.SMT as SMT
+import qualified Prot.Lang.Run as R
 
 data Builder where
     BSampl :: String -> Distr tp -> [SomeExp] -> Builder 
@@ -38,9 +41,8 @@ bTrans _ = throwError "ill formed list"
 type BuilderState = [Builder]
 type ProgInt  = State BuilderState 
 type Prog = ProgInt ()
-buildProg :: ProgInt () -> [Builder]
+buildProg :: Prog -> [Builder]
 buildProg e = execState e []
-
 
 appendState :: Builder -> ProgInt ()
 appendState b = do
@@ -54,19 +56,65 @@ bSampl x d es = do
     appendState b
     return $ mkAtom x (typeOf d)
 
-bIte :: Expr TBool -> ProgInt () -> ProgInt () -> ProgInt ()
+bIte :: Expr TBool -> Prog -> Prog -> Prog
 bIte b c1 c2 = do
     let b1 = buildProg c1
         b2 = buildProg c2
         c = BIte b b1 b2
     appendState c
 
-bRet :: Expr tp -> ProgInt ()
-bRet e = appendState (BRet e)
+bRet :: Expr tp -> Prog
+bRet e = 
+    appendState (BRet e)
 
 bLet :: String -> Expr tp -> ProgInt (Expr tp)
 bLet x e = do
     appendState (BLet x e)
     return $ mkAtom x (typeOf e)
 
+progsEquiv :: Prog -> Prog -> IO Bool
+progsEquiv p1 p2 = do
+    let cmd1 = runExcept $ bTrans (buildProg $ p1)
+        cmd2 = runExcept $ bTrans (buildProg $ p2)
+    case (cmd1, cmd2) of
+      (Right (SomeCommand tr c), Right (SomeCommand tr' c')) ->
+          case (testEquality tr tr') of
+            Just Refl -> do
+                let leaves1_ = map unfoldLets $ commandToLeaves c
+                    leaves2_ = map unfoldLets $ commandToLeaves c'
+                leaves1 <- filterM SMT.leafSatisfiable leaves1_
+                leaves2 <- filterM SMT.leafSatisfiable leaves2_
+                SMT.leavesEquiv leaves1 leaves2
+            _ -> return False
+      (Left err, _) -> fail $ err
+      (_, Left err) -> fail $ err
+      
+ppProg :: Prog -> String
+ppProg p =
+    case (runExcept $ bTrans (buildProg p)) of
+      Right (SomeCommand tr cmd) ->
+          ppCommand cmd
+      _ -> error "compile error"
 
+ppProgLeaves :: Prog -> String
+ppProgLeaves p =
+    case (runExcept $ bTrans (buildProg p)) of
+      Right (SomeCommand tr cmd) -> ppLeaves $ commandToLeaves cmd
+      _ -> error "compile error"
+
+ppSatProgLeaves :: Prog -> IO String
+ppSatProgLeaves p =
+    case (runExcept $ bTrans (buildProg p)) of
+      Right (SomeCommand tr cmd) -> do
+          leaves <- filterM SMT.leafSatisfiable (map unfoldLets $ commandToLeaves cmd)
+          return $ show leaves
+      _ -> error "compile error"
+
+
+
+runProg :: Prog -> IO R.SomeInterp
+runProg p =
+    case (runExcept $ bTrans (buildProg p)) of
+      Right (SomeCommand tr cmd) -> do
+          e <- R.runCommand cmd
+          return $ R.SomeInterp tr e

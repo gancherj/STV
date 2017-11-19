@@ -53,4 +53,9 @@ unfoldLets (LeafLet samps lets conds ret) =
         newconds = map (exprSub emap) conds
         newret = exprSub emap ret in
     Leaf newsamps newconds newret
-     
+    
+instance Show (Leaf rtp) where
+    show (Leaf samps conds ret) =
+        "Samplings: " ++ (concatMap ppSampling samps) ++ "\n Conds:" ++  (concatMap (\e -> (ppExpr e) ++ " ") conds) ++ "\n Ret: " ++ (ppExpr ret) ++ "\n \n"
+
+
