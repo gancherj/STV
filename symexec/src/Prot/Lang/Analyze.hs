@@ -18,7 +18,7 @@ data LeafLet ret where
         _leafletRet :: Expr ret} -> LeafLet ret 
 
 ppLeaf :: LeafLet ret -> String
-ppLeaf (LeafLet samps lets conds ret) = "Samplings: " ++ (concatMap ppSampling samps) ++ "\n Lets: " ++ (concatMap (\(x, e) -> x ++ " <- " ++ (ppSomeExp e) ++ "\n") lets) ++ "\n Conds:" ++  (concatMap ppExpr conds) ++ "\n Ret: " ++ (ppExpr ret) ++ "\n \n"
+ppLeaf (LeafLet samps lets conds ret) = "Samplings: " ++ (concatMap ppSampling samps) ++ "\n Lets: " ++ (concatMap (\(x, e) -> x ++ " <- " ++ (ppSomeExp e) ++ "\n") lets) ++ "\n Conds:" ++  (concatMap (\e -> (ppExpr e) ++ " ") conds) ++ "\n Ret: " ++ (ppExpr ret) ++ "\n \n"
 
 ppLeaves :: [LeafLet ret] -> String
 ppLeaves e = concatMap ppLeaf e

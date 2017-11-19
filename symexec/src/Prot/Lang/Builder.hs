@@ -4,6 +4,8 @@ import Prot.Lang.Expr
 import Prot.Lang.Types
 import Control.Monad.Except
 import Data.Type.Equality
+import Data.Parameterized.Some
+import Control.Monad.State
 
 data Builder where
     BSampl :: String -> Distr tp -> [SomeExp] -> Builder 
@@ -31,9 +33,40 @@ bTrans ((BLet x e):bs) = do
       SomeCommand tr c -> return $ SomeCommand tr (Let x e c)
 bTrans _ = throwError "ill formed list"
 
-bSampl = BSampl
-bIte = BIte
-bRet = BRet
-bLet = BLet
+
+
+type BuilderState = [Builder]
+type ProgInt  = State BuilderState 
+type Prog = ProgInt ()
+buildProg :: ProgInt () -> [Builder]
+buildProg e = execState e []
+
+
+appendState :: Builder -> ProgInt ()
+appendState b = do
+    ls <- get
+    put $ ls ++ [b]
+
+bSampl :: String -> Distr tp -> [Some Expr] -> ProgInt (Expr tp)
+bSampl x d es = do
+    let b = BSampl x d (map (\e -> case e of
+                                    Some e -> SomeExp (typeOf e) e) es)
+    appendState b
+    return $ mkAtom x (typeOf d)
+
+bIte :: Expr TBool -> ProgInt () -> ProgInt () -> ProgInt ()
+bIte b c1 c2 = do
+    let b1 = buildProg c1
+        b2 = buildProg c2
+        c = BIte b b1 b2
+    appendState c
+
+bRet :: Expr tp -> ProgInt ()
+bRet e = appendState (BRet e)
+
+bLet :: String -> Expr tp -> ProgInt (Expr tp)
+bLet x e = do
+    appendState (BLet x e)
+    return $ mkAtom x (typeOf e)
 
 

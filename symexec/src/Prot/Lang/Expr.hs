@@ -29,6 +29,13 @@ data App (f :: Type -> *) (tp :: Type) where
 
 data Expr tp = Expr !(App Expr tp) | AtomExpr !(Atom tp)
 
+class IsExpr a where
+
+instance IsExpr (Expr TInt) where
+
+instance IsExpr (Expr TBool) where
+
+
 instance TypeOf Expr where
 
     typeOf (AtomExpr (Atom _ t)) = t
@@ -140,4 +147,28 @@ someExprSub emap e1 =
       (SomeExp tp e) ->
           SomeExp tp (exprSub emap e)
 
+class FreeVar a where
+    freeVars :: a -> [String]
 
+instance FreeVar (Expr tp) where
+
+    freeVars (AtomExpr (Atom x tp)) = [x]
+    freeVars (Expr (IntLit _)) = []
+    freeVars (Expr (IntAdd e1 e2)) = (freeVars e1) ++ (freeVars e2)
+    freeVars (Expr (IntMul e1 e2)) = (freeVars e1) ++ (freeVars e2)
+    freeVars (Expr (IntNeg e1 )) = (freeVars e1) 
+
+    freeVars (Expr (BoolLit _)) = []
+    freeVars (Expr (BoolAnd e1 e2)) = (freeVars e1) ++ (freeVars e2)
+    freeVars (Expr (BoolOr e1 e2)) = (freeVars e1) ++ (freeVars e2)
+    freeVars (Expr (BoolXor e1 e2)) = (freeVars e1) ++ (freeVars e2)
+    freeVars (Expr (BoolNot e1 )) = (freeVars e1) 
+
+    freeVars (Expr (IntLe e1 e2)) = (freeVars e1) ++ (freeVars e2)
+    freeVars (Expr (IntLt e1 e2)) = (freeVars e1) ++ (freeVars e2)
+    freeVars (Expr (IntGt e1 e2)) = (freeVars e1) ++ (freeVars e2)
+    freeVars (Expr (IntEq e1 e2)) = (freeVars e1) ++ (freeVars e2)
+    freeVars (Expr (IntNeq e1 e2)) = (freeVars e1) ++ (freeVars e2)
+
+instance FreeVar SomeExp where
+    freeVars (SomeExp tp e) = freeVars e
