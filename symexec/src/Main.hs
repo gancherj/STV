@@ -4,17 +4,18 @@ import Prot.Lang.Types
 import Prot.Lang.Expr
 import Prot.Lang.Command
 import Prot.Examples.RPS
+import Data.SBV
 import Data.Parameterized.Context as Ctx
 
 tstCommand :: String -> Prog
 tstCommand xname = do
     let d = mkDistr "D" (TTupleRepr (Ctx.empty Ctx.%> TIntRepr Ctx.%> TIntRepr)) (\_ _ -> [])
     xt <- bSampl xname d []
-    case ((getIth (mkSomeExp xt) 0), (getIth (mkSomeExp xt) 1)) of
+    case ((getIth (mkSome xt) 0), (getIth (mkSome xt) 1)) of
       ((SomeExp TIntRepr x), (SomeExp TIntRepr y)) -> do
         bIte (x |<=| 5) 
-            (do { bRet x } )
-            (do { bRet y } )
+            (do { unSome (mkTuple [mkSome x, mkSome y]) $ \_ e -> bRet e } )
+            (do { unSome (mkTuple [mkSome y, mkSome x]) $ \_ e -> bRet e } )
 
 
 

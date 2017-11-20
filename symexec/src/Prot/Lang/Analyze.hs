@@ -29,7 +29,7 @@ commandToLeaves cmd =
       Ret e -> [LeafLet [] [] [] e]
       Let x e k ->
           let lvs = commandToLeaves k in
-          map (\(LeafLet samps lets conds ret) -> LeafLet samps ((x, (mkSomeExp e)):lets) conds ret) lvs
+          map (\(LeafLet samps lets conds ret) -> LeafLet samps ((x, (mkSome e)):lets) conds ret) lvs
       Sampl x d args k ->
           let lvs = commandToLeaves k in
           map (\(LeafLet samps lets conds ret) -> LeafLet ((Sampling d x args):samps) lets ((getConds x args d) ++ conds) ret) lvs

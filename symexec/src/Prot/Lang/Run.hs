@@ -6,6 +6,7 @@ import Data.Type.Equality
 
 import Data.Parameterized.TraversableFC as F
 import Data.Parameterized.TraversableF as F
+import Data.Parameterized.Pair as P
 import qualified Data.Parameterized.Context as Ctx
 import Data.Parameterized.Classes
 import Data.Parameterized.Some
@@ -20,13 +21,26 @@ type family TInterp (tp :: Type) :: * where
 
 newtype TInterp' tp = TI {unTI :: TInterp tp}
 
-
 data SomeInterp = forall tp. SomeInterp (TypeRepr tp) (TInterp tp)
 
 instance Show SomeInterp where
     show (SomeInterp TIntRepr ti) = (show ti)
     show (SomeInterp TBoolRepr ti) = (show ti)
-    show (SomeInterp (TTupleRepr ctx) ti) = "tuple"
+    show (SomeInterp (TTupleRepr ctx) ti) = showTupleInterp ctx ti
+
+data PPInterp tp = PPInterp (TypeRepr tp) (TInterp tp)
+
+showTupleInterp :: CtxRepr ctx -> Ctx.Assignment TInterp' ctx -> String
+showTupleInterp ctx asgn = 
+    let z = Ctx.zipWith (\a b -> PPInterp a (unTI b)) ctx asgn 
+        valstrs = F.toListFC (\(PPInterp tr val) ->
+            case tr of
+              TIntRepr -> show val
+              TBoolRepr -> show val
+              TTupleRepr ictx -> showTupleInterp ictx val
+              ) z in
+    "[" ++ (concatMap (\s -> s ++ ", ") valstrs) ++ "]"
+
 
 evalExpr :: Map.Map String (SomeInterp) -> Expr tp -> TInterp tp
 evalExpr emap (AtomExpr (Atom x tr)) = 
@@ -80,6 +94,14 @@ runCommand_ :: Map.Map String (SomeInterp) -> Command tp -> IO (TInterp tp)
 runCommand_ emap (Sampl x (SymDistr dn tr dconds) ls k) = do
     a <- runQuery x dn tr
     let newmap = Map.insert x (SomeInterp tr a) emap
+    runCommand_ newmap k
+runCommand_ emap (Sampl x (UnifInt _ _) ls k) = do
+    a <- runQuery x "unif" TIntRepr
+    let newmap = Map.insert x (SomeInterp TIntRepr a) emap
+    runCommand_ newmap k
+runCommand_ emap (Sampl x (UnifBool) ls k) = do
+    a <- runQuery x "unif" TBoolRepr
+    let newmap = Map.insert x (SomeInterp TBoolRepr a) emap
     runCommand_ newmap k
 
 runCommand_ emap (Let x e k) = runCommand_ (Map.insert x (SomeInterp (typeOf e) (evalExpr emap e)) emap) k

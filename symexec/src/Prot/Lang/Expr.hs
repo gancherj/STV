@@ -84,8 +84,13 @@ data SomeExp = forall tp. SomeExp (TypeRepr tp) (Expr tp)
 ppSomeExp :: SomeExp -> String
 ppSomeExp (SomeExp _ e) = ppExpr e
 
-mkSomeExp :: Expr tp -> SomeExp
-mkSomeExp e = SomeExp (typeOf e) e
+mkSome :: Expr tp -> SomeExp
+mkSome e = SomeExp (typeOf e) e
+
+unSome :: SomeExp -> (forall tp. TypeRepr tp -> Expr tp -> a) -> a
+unSome e k =
+    case e of
+      (SomeExp tp e) -> k tp e
 
 ppExpr :: Expr tp -> String
 ppExpr (AtomExpr (Atom x _)) = x
