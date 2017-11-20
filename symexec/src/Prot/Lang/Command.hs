@@ -11,6 +11,8 @@ data Distr tp where
 
 ppDistr :: Distr tp -> String
 ppDistr (SymDistr x _ _) = x
+ppDistr (UnifInt i1 i2) = "[" ++ (show i1) ++ ", " ++ (show i2) ++ "]"
+ppDistr (UnifBool) = "{0,1}"
 
 mkDistr :: String -> TypeRepr tp -> (Expr tp -> [SomeExp] -> [Expr TBool]) -> Distr tp
 mkDistr = SymDistr
@@ -21,6 +23,7 @@ getConds x [] (UnifInt i1 i2) =
     let xv = mkAtom x TIntRepr in
     [Expr $ IntLe (Expr $ IntLit i1) xv, Expr $ IntLe xv (Expr $ IntLit i2)]
 getConds x [] (UnifBool) = []
+getConds _ _ _ = error "bad distr call!"
 
 instance TypeOf Distr where
     typeOf (SymDistr x t _) = t

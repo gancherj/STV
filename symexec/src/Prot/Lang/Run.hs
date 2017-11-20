@@ -4,14 +4,29 @@ import Prot.Lang.Expr
 import Prot.Lang.Types
 import Data.Type.Equality
 
-import Data.Map.Strict as Map
+import Data.Parameterized.TraversableFC as F
+import Data.Parameterized.TraversableF as F
+import qualified Data.Parameterized.Context as Ctx
+import Data.Parameterized.Classes
+import Data.Parameterized.Some
+import qualified Data.Map.Strict as Map
 
 
 type family TInterp (tp :: Type) :: * where
     TInterp TInt = Integer
     TInterp TBool = Bool
+    TInterp (TTuple ctx) = Ctx.Assignment TInterp' ctx
+
+
+newtype TInterp' tp = TI {unTI :: TInterp tp}
+
 
 data SomeInterp = forall tp. SomeInterp (TypeRepr tp) (TInterp tp)
+
+instance Show SomeInterp where
+    show (SomeInterp TIntRepr ti) = (show ti)
+    show (SomeInterp TBoolRepr ti) = (show ti)
+    show (SomeInterp (TTupleRepr ctx) ti) = "tuple"
 
 evalExpr :: Map.Map String (SomeInterp) -> Expr tp -> TInterp tp
 evalExpr emap (AtomExpr (Atom x tr)) = 
@@ -39,15 +54,33 @@ evalExpr emap (Expr (IntGt e1 e2)) = (evalExpr emap e1) > (evalExpr emap e2)
 evalExpr emap (Expr (IntEq e1 e2)) = (evalExpr emap e1) == (evalExpr emap e2)
 evalExpr emap (Expr (IntNeq e1 e2)) = not $ (evalExpr emap e1) == (evalExpr emap e2)
 
-runCommand_ :: Map.Map String (SomeInterp) -> Command tp -> IO (TInterp tp)
-runCommand_ emap (Sampl x (SymDistr dn TIntRepr dconds) ls k) = do
+evalExpr emap (Expr (MkTuple cr asgn)) = F.fmapFC (TI . (evalExpr emap)) asgn
+evalExpr emap (Expr (TupleGet tup ind tp)) = unTI $ (evalExpr emap tup) Ctx.! ind
+evalExpr emap (Expr (TupleSet cr tup ind e)) = 
+    Ctx.update ind (TI $ evalExpr emap e) (evalExpr emap tup)
+
+
+runQuery :: String -> String -> TypeRepr tp -> IO (TInterp tp)
+runQuery x dn TIntRepr = do
     putStrLn $ x ++ " <- " ++ dn ++ ":"
     line <- getLine
-    runCommand_ (Map.insert x (SomeInterp TIntRepr (read line)) emap) k
-runCommand_ emap (Sampl x (SymDistr dn TBoolRepr dcs) ls k) = do
-    putStr $ x ++ " <- " ++ dn ++ ":"
+    return $ read line
+runQuery x dn TBoolRepr = do
+    putStrLn $ x ++ " <- " ++ dn ++ ":"
     line <- getLine
-    runCommand_ (Map.insert x (SomeInterp TBoolRepr (read line)) emap) k
+    return $ read line
+runQuery x dn (TTupleRepr ctxrepr) = do
+    asgn <- Ctx.traverseWithIndex (\i repr -> do
+        e <- runQuery (x ++ "[" ++ (show (Ctx.indexVal i)) ++ "]") dn repr
+        return $ TI e) ctxrepr
+    return $ asgn
+
+
+runCommand_ :: Map.Map String (SomeInterp) -> Command tp -> IO (TInterp tp)
+runCommand_ emap (Sampl x (SymDistr dn tr dconds) ls k) = do
+    a <- runQuery x dn tr
+    let newmap = Map.insert x (SomeInterp tr a) emap
+    runCommand_ newmap k
 
 runCommand_ emap (Let x e k) = runCommand_ (Map.insert x (SomeInterp (typeOf e) (evalExpr emap e)) emap) k
 runCommand_ emap (Ite b c1 c2) = case (evalExpr emap b) of

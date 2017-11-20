@@ -17,6 +17,7 @@ executable symexec
   hs-source-dirs:      src
   main-is:             Main.hs
   default-language:    Haskell2010
+  ghc-options:         -Wincomplete-patterns
   build-depends:       base >= 4.7 && < 5,
                        parameterized-utils,
                        containers,
@@ -24,6 +25,6 @@ executable symexec
                        parsec,
                        mtl
 
-  other-modules: Prot.Lang.Expr, Prot.Lang.Types, Prot.Lang.Command, Prot.Lang.Run, Prot.Lang.Analyze, Prot.Lang.SMT, Prot.Lang.Lang
+  other-modules: Prot.Lang.Expr, Prot.Lang.Types, Prot.Lang.Command, Prot.Lang.Run, Prot.Lang.Analyze, Prot.Lang.SMT, Prot.Lang.Lang, Prot.Examples.RPS
 
   default-extensions: FlexibleInstances, GADTs, GeneralizedNewtypeDeriving, KindSignatures, TemplateHaskell, TypeOperators, TypeSynonymInstances, MultiParamTypeClasses, FunctionalDependencies, ScopedTypeVariables, UndecidableInstances, ConstraintKinds, DataKinds, PolyKinds, EmptyDataDecls, TypeFamilies, RankNTypes, ExistentialQuantification, FlexibleContexts

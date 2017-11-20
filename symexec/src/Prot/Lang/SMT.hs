@@ -9,7 +9,18 @@ import Data.Type.Equality
 import Control.Monad
 import qualified Data.Map.Strict as Map
 
-type family Interp (tp :: Type) :: * where
+leafSatisfiable :: Leaf ret -> IO Bool
+leafSatisfiable = error "unimp"
+
+leavesEquiv :: [Leaf ret] -> [Leaf ret] -> IO Bool
+leavesEquiv = error "unimp"
+
+
+{-
+
+   TODO finish. base types are SMT types, contexts are contexts
+
+type family Interp (tp :: BaseType) :: * where
     Interp TInt = Integer
     Interp TBool = Bool
 
@@ -170,3 +181,4 @@ findM f (x:xs) = do
 
 leavesEquiv :: [Leaf rtp] -> [Leaf rtp] -> IO Bool
 leavesEquiv = fail "unimp"
+-}
