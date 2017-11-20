@@ -16,7 +16,7 @@ tstCommand xname = do
         bIte (x |<=| 5) 
             (do { unSome (mkTuple [mkSome x, mkSome y]) $ \_ e -> bRet e } )
             (do { unSome (mkTuple [mkSome y, mkSome x]) $ \_ e -> bRet e } )
-
+      _ -> error "type error"
 
 
 

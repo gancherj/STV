@@ -118,3 +118,4 @@ runProg p =
       Right (SomeCommand tr cmd) -> do
           e <- R.runCommand cmd
           return $ R.SomeInterp tr e
+      _ -> error "compile error"

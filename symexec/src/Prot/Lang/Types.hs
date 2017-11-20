@@ -31,6 +31,7 @@ data TypeRepr (t :: Type) :: * where
 
 
 type CtxRepr = Ctx.Assignment TypeRepr
+type BaseCtxRepr = Ctx.Assignment BaseTypeRepr
 
 instance Show (TypeRepr tp) where
     show TIntRepr = "TInt"
