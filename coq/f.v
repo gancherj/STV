@@ -1,7 +1,8 @@
 Add LoadPath "~/fcf/src".
 Require Import FCF.FCF.
-Require Import Bool Arith String List CpdtTactics.
+Require Import Bool Arith String List CpdtTactics Program.
 Open Scope string_scope.
+Require FcfLems.
 
 Definition var := string.
 
@@ -87,7 +88,7 @@ Definition set_d (x:distr) (n:Comp nat) (s:distr_state) : distr_state :=
 
 
 Inductive com : Type :=
-| Sampl : var -> distr -> com
+| Sampl : var -> distr -> com 
 | If : bexp -> com -> com -> com
 | Seq : com -> com -> com
 | Skip : com.
@@ -112,6 +113,7 @@ Fixpoint sym_exec (c : com) : list (cond_com * list bexp) :=
   | Skip => (CondSkip, nil) :: nil
   end.
 
+
 Lemma repeat_In : forall {A} (c : Comp A) (x : A) (p : A -> bool), In x (getSupport (Repeat c p)) -> p x = true.
   intros.
   simpl in H.
@@ -127,6 +129,7 @@ Ltac repeat_inv := match goal with
 
 Ltac myrem e := remember e; destruct e; subst.
 
+Ltac uf e := unfold e; fold e.
 
 Instance string_EqDec : EqDec string.
 apply dec_EqDec.
@@ -159,6 +162,41 @@ Qed.
 Definition fcf_trans c ds := fcf_trans_ c ds (ret nil).
 Notation "d1 ~~ d2" := (forall x, d1 x == d2 x) (at level 80).
 
+(* maybe need a stronger hypothesis for this *)
+Lemma evalDist_eq_getSupport_eq : forall {A} (c c' : Comp A), evalDist c ~~ evalDist c' -> getSupport c = getSupport c'.
+  admit.
+Admitted.
+
+
+
+Lemma fcf_trans_iso : forall c ds (sc sc'  : Comp state), (evalDist sc) ~~ (evalDist sc') -> evalDist (fcf_trans_ c ds sc) ~~ evalDist (fcf_trans_ c ds sc').
+    induction c; intros.
+    crush.
+    rewrite (evalDist_eq_getSupport_eq _ _ H).
+    apply sumList_body_eq.
+    intros.
+    rewrite H.
+    apply eqRat_refl.
+
+    unfold fcf_trans_; fold fcf_trans_.
+    apply evalDist_seq_eq.
+    apply H.
+    intros.
+    destruct (eval_bexp b x0).
+    apply IHc1.
+    auto.
+    apply IHc2.
+    auto.
+
+
+    unfold fcf_trans_; fold fcf_trans_.
+    apply IHc2.
+    apply IHc1.
+    auto.
+
+    crush.
+Qed.    
+    
 
 
 
@@ -173,25 +211,105 @@ Fixpoint fcf_leaftrans_ (c : cond_com) (ds : distr_state) (sc : Comp state) : Co
   | CondSkip => sc
   end.
 
+Lemma fcf_leaftrans_iso : forall c ds sc sc', (evalDist sc) ~~ (evalDist sc') -> evalDist (fcf_leaftrans_ c ds sc) ~~ evalDist (fcf_leaftrans_ c ds sc').
+  induction c; intros.
+  crush.
+  rewrite (evalDist_eq_getSupport_eq _ _ H).
+  apply sumList_body_eq.
+  intros.
+  apply ratMult_eqRat_compat.
+  apply H.
+  apply eqRat_refl.
+
+  unfold fcf_leaftrans_; fold fcf_leaftrans_.
+  apply IHc2.
+  apply IHc1.
+  auto.
+
+  crush.
+Qed.  
+  
+  
+
 Definition condition {A : Set} (p : A -> bool) (sc : Comp A) := Repeat sc p.
 
-Definition fcf_leaftrans c ds := fcf_leaftrans_ c ds (ret nil).
+Definition leaf_prob_ (ds : distr_state) (leaf : cond_com * (list bexp)) (cs : Comp state) := Pr[s <-$ fcf_leaftrans_ (fst leaf) ds cs; ret eval_bexp (bexp_and (snd leaf)) s].
 
-Definition leaf_prob (ds : distr_state) (leaf : cond_com * (list bexp)) := Pr[s <-$ fcf_leaftrans (fst leaf) ds; ret eval_bexp (bexp_and (snd leaf)) s].
+Definition leaf_condition_ (ds : distr_state) (leaf : cond_com * (list bexp)) (cs : Comp state) := condition (eval_bexp (bexp_and (snd leaf))) (fcf_leaftrans_ (fst leaf) ds cs).
 
-Definition leaf_condition (ds : distr_state) (leaf : cond_com * (list bexp)) := condition (eval_bexp (bexp_and (snd leaf))) (fcf_leaftrans (fst leaf) ds).
+Lemma leaf_condition_iso : forall ds leaf cs cs', (evalDist cs) ~~ (evalDist cs') -> evalDist (leaf_condition_ ds leaf cs) ~~ evalDist (leaf_condition_ ds leaf cs').
+  admit.
+  Admitted.
 
+Definition fcf_condtrans_ (ds : distr_state) (leaves : list (cond_com * (list bexp))) (cs : Comp state) : Distribution state := fun x =>
+  sumList leaves (fun leaf => (leaf_prob_ ds leaf cs) * (evalDist (leaf_condition_ ds leaf cs) x)).
 
-Definition fcf_condtrans (ds : distr_state) (leaves : list (cond_com * (list bexp))) : Distribution state := fun x =>
-  sumList leaves (fun leaf => (leaf_prob ds leaf) * (evalDist (leaf_condition ds leaf) x)).
-
-Lemma sumList_single : forall {A : Set} (x:A) (f : A -> Rat), sumList (x :: nil) f == f x.
-  unfold sumList; unfold fold_left; simpl.
-  intros;
-  rewrite <- ratAdd_0_l.
+Lemma fcf_condtrans_iso : forall ds leaves (cs cs' : Comp state), (evalDist cs) ~~ (evalDist cs') -> (fcf_condtrans_ ds leaves cs) ~~ (fcf_condtrans_ ds leaves cs').
+  induction leaves.
+  intros.
+  unfold fcf_condtrans_.
+  unfold sumList, fold_left.
   apply eqRat_refl.
-  Qed.
 
+  unfold fcf_condtrans_.
+  intros.
+  rewrite sumList_cons.
+  rewrite sumList_cons.
+  apply ratAdd_eqRat_compat.
+  apply ratMult_eqRat_compat.
+  unfold leaf_prob_.
+  apply evalDist_seq_eq.
+  apply fcf_leaftrans_iso.
+  auto.
+  intros.
+  apply eqRat_refl.
+  apply leaf_condition_iso; auto.
+
+  apply sumList_body_eq.
+  intros.
+  apply ratMult_eqRat_compat.
+  unfold leaf_prob_.
+  apply evalDist_seq_eq.
+  apply fcf_leaftrans_iso.
+  auto.
+  intros;
+  apply eqRat_refl.
+
+  apply leaf_condition_iso; auto.
+Qed.
+
+Lemma fcf_condtrans_seq (ds : distr_state) (c1 c2 : com) cs : fcf_condtrans_ ds (sym_exec (Seq c1 c2)) cs ~~ fcf_condtrans_ ds (sym_exec c2) (fcf_trans_ c1 ds cs).
+
+
+
+  
+  revert c2.
+  induction c1; intros.
+  uf sym_exec.
+  crush.
+  rewrite app_nil_r.
+  uf fcf_condtrans_.
+  generalize (sym_exec c2).
+  induction l.
+  unfold sumList; crush.
+  rewrite map_cons.
+  rewrite sumList_cons.
+  rewrite IHl.
+  rewrite sumList_cons.
+  apply ratAdd_eqRat_compat.
+  destruct a.
+  uf leaf_condition_.
+  unfold snd.
+  admit.
+
+  apply eqRat_refl.
+  uf fcf_trans_.
+  uf sym_exec.
+
+
+  admit.
+Admitted.
+  
 
 Lemma ret_true_1 : forall {A : Set} (C : Comp A), well_formed_comp C -> Pr [_ <-$ C; ret true] == 1.
   intros; fcf_irr_l.
@@ -204,90 +322,165 @@ Qed.
 
 
 Lemma repeat_true : forall {A : Set} (C : Comp A), well_formed_comp C -> (evalDist C) ~~ (evalDist (Repeat C (fun _ => true))).
-  simpl.
   intros.
-  unfold indicator.
+  pose proof (evalDist_lossless H).
+  rewrite FcfLems.unfold_repeat_true.
   rewrite filter_tr.
-  cut ( ratInverse (sumList (getSupport C) (evalDist C))  == 1).
+  rewrite <- ratMult_1_r.
+  apply ratMult_eqRat_compat.
+  rewrite ratMult_1_r; apply eqRat_refl.
+  rewrite ratInverse_eqRat_compat.
+  rewrite ratInverse_1.
+  rattac.
+  rewrite H0; rattac.
+  apply H0.
+  auto.
+Qed.
+
+Theorem neq_nil_In {A} (xs : list A) : xs <> [] -> (exists x, In x xs).
+  induction xs.
+  intros; contradiction.
   intros.
-  rewrite H0.
-  repeat rewrite ratMult_1_l.
-  rattac.
-  rewrite (@ratInverse_eqRat_compat _ 1).
-  unfold ratInverse.
-  simpl.
-  apply eqRat_refl.
-  rewrite evalDist_lossless.
-  rattac.
-  wftac.
-  rewrite evalDist_lossless.
-  rattac.
-  wftac.
+  exists a.
+  crush.
 Qed.
 
 
-Theorem mainTheorem (ds : distr_state) (c : com) : wf_distr_state ds -> (evalDist (fcf_trans c ds)) ~~ fcf_condtrans ds (sym_exec c).
-  intros; simpl.
+Lemma negP_iff_Not : forall b x, (FcfLems.negP (eval_bexp b)) x = (eval_bexp (Not b)) x.
+    crush.
+Qed.
 
-  (* sampl case *)
-  induction c.
-  unfold sym_exec.
-  unfold fcf_condtrans.
-  rewrite sumList_single.
-  unfold leaf_prob.
-  unfold snd.
-  unfold fst.
-  unfold bexp_and; unfold fold_left.
+
+Theorem mainTheorem (ds : distr_state) (c : com) `{eq_dec state} : forall cs, well_formed_comp cs -> wf_distr_state ds -> (evalDist (fcf_trans_ c ds cs)) ~~ fcf_condtrans_ ds (sym_exec c) cs.
+  induction c; intros.
+
+  (* ret case *)
+  unfold fcf_trans_, fcf_condtrans_, sym_exec, leaf_prob_, sumList, fold_left.
+  unfold fst, bexp_and, fold_left, leaf_condition_, snd, bexp_and, fold_left, fst.
+  unfold eval_bexp.
+  unfold fcf_leaftrans_.
+  rewrite ret_true_1.
+  unfold condition.
+  rewrite <- repeat_true.
+  rewrite <- ratAdd_0_l.
+  rewrite ratMult_1_l.
+  apply eqRat_refl.
+  wftac.
+  wftac.
+
+  uf fcf_trans_.
+  uf sym_exec.
+  uf fcf_condtrans_.
+  pose proof (FcfLems.filter_exists (getSupport cs) (eval_bexp b)).
+  destruct H1.
+  destruct s.
+  destruct s.
+  pose proof (getSupport_length_nz H).
+  rewrite e in H1.
+  inversion H1.
+
+  destruct a.
+  destruct (neq_nil_In (filter (eval_bexp b) (getSupport cs)) H1).
+  rewrite FcfLems.if_repeat_decomp_l.
+
+
+
+  Theorem impossible_leaf_condition_nil : forall ds cs b c bs x, filter (eval_bexp b) (getSupport cs) = [] -> In b bs -> evalDist (leaf_condition_ ds (c,bs) cs) x == 0.
+    intros.
+    crush.
+  
+  unfold leaf_condition_.
+  admit. (* the actual probabilistic judgement *)
+  intros.
+  apply wfcomp_trans; auto.
+  econstructor; auto.
+  apply H3.
+  unfold FcfLems.cond_prob.
+  rewrite H2.
+  uf sumList; crush.
+
+  destruct a.
+  destruct (neq_nil_In (filter (FcfLems.negP (eval_bexp b)) (getSupport cs)) H2).
+
+
+  rewrite FcfLems.if_repeat_decomp_r.
+  admit. (* prob calculation *)
+  intros.
+  apply wfcomp_trans; auto.
+  econstructor; auto.
+  apply H3.
+  unfold FcfLems.cond_prob.
+  rewrite H1.
+  uf sumList; crush.
+
+  destruct a.
+  destruct (neq_nil_In (filter (eval_bexp b) (getSupport cs)) H1).
+  destruct (neq_nil_In (filter (FcfLems.negP (eval_bexp b)) (getSupport cs)) H2).
+  
+
+  rewrite FcfLems.if_repeat_decomp_both.
+  admit. (* prob *)
+  intros; apply wfcomp_trans; auto.
+  intros; apply wfcomp_trans; auto.
+  econstructor; auto.
+  apply H3.
+  econstructor; auto.
+  apply H4.
+
+  (* seq *)
+  uf fcf_trans_.
+  rewrite IHc2.
+  rewrite fcf_condtrans_seq.
+  apply eqRat_refl.
+  apply wfcomp_trans; auto.
+  auto.
+
+  (* skip *)
+  crush.
+  unfold fcf_condtrans_.
+  unfold sumList; crush.
+  unfold leaf_prob_.
+  unfold fst, snd, bexp_and, fcf_leaftrans_, fold_left.
+  rewrite <- ratAdd_0_l.
   unfold eval_bexp.
   rewrite ret_true_1.
   rewrite ratMult_1_l.
-  unfold leaf_condition.
-  unfold snd.
-  unfold bexp_and.
-  unfold fold_left.
-  unfold eval_bexp.
-  unfold fst.
-  unfold fcf_leaftrans.
-  unfold fcf_leaftrans_.
-  unfold condition.
-  rewrite repeat_true.
-  unfold fcf_trans.
-  unfold fcf_trans_.
+  rewrite <- ratMult_1_r.
+  rewrite ratMult_comm.
+  apply ratMult_eqRat_compat.
+  unfold indicator.
+  rewrite ratMult_1_l.
+  apply eqRat_symm.
+  rewrite ratInverse_eqRat_compat.
+  apply ratInverse_1.
+  rewrite filter_tr.
+  rewrite evalDist_lossless.
+  rattac.
+  auto.
+  rewrite filter_tr.
+  rewrite evalDist_lossless.
   apply eqRat_refl.
-  unfold fcf_leaftrans.
-  unfold fcf_leaftrans_.
   wftac.
-  unfold fcf_trans.
-  apply wfcomp_trans.
+  rewrite ratMult_1_l; apply eqRat_refl.
   wftac.
-  apply H.
-  unfold fcf_leaftrans.
-  unfold fcf_leaftrans_.
-  wftac.
+Admitted.
 
-  unfold fcf_trans, fcf_trans_.
-  fcf_irr_l.
-  wftac.
-  inversion H0; subst.
-  fold fcf_trans_.
-  fold fcf_trans.
-  remember (eval_bexp b nil) as p.
-  unfold sym_exec.
-  fold sym_exec.
-  unfold fcf_condtrans.
-  rewrite Fold.sumList_app.
-  destruct p.
-  rewrite IHc1.
-  fold fcf_condtrans.
-  unfold fcf_condtrans in IHc1.
-  unfold leaf_prob.
   
+  
+  unfold sym_exec; fold sym_exec.
+  unfold fcf_condtrans_; fold fcf_condtrans_.w
+
+  unfold fcf_trans_; fold fcf_trans_.
+  rewrite <- IHc2.
+  rewrite IHc2.
+  unfold sym_exec; fold sym_exec.
+  
+
   
   
 
 
-
-
+Admitted.
 
   
 
