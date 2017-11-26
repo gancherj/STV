@@ -405,21 +405,43 @@ Lemma fcf_condtrans_app : forall l1 l2 ds s x, fcf_condtrans (l1 ++ l2) ds s x =
   crush.
   Qed.
 
-SearchAbout (sumList (map _ _) _).
 
-Lemma evalDist_repeat_equiv : forall {A : Set} (c : Comp A) (p1 p2 : A -> bool),
-    (forall x, (p1 x = p2 x)) -> forall x, evalDist (Repeat c p1) x == evalDist (Repeat c p2) x.
-  intros.
+Lemma filter_ext_cond : forall {A : Set} {eqa : eq_dec A} (p1 p2 : A -> bool) (xs : list A), (forall x, In x xs -> p1 x = p2 x) -> filter p1 xs = filter p2 xs.
+  induction xs.
   crush.
+  simpl.
+  intros.
+  destruct (H a).
+  crush.
+  cut (filter p1 xs = filter p2 xs).
+  intro H2; rewrite H2; crush.
+  apply IHxs.
+  intros.
+  apply (H x).
+  right; crush.
+Qed.  
+
+Lemma evalDist_repeat_equiv : forall {A : Set} (eqa : eq_dec A) (c : Comp A) (p1 p2 : A -> bool),
+    (forall x, In x (getSupport c) -> (p1 x = p2 x)) -> forall x, evalDist (Repeat c p1) x == evalDist (Repeat c p2) x.
+  crush.
+  destruct (In_dec eqa x (getSupport c)).
   apply ratMult_eqRat_compat.
   apply ratMult_eqRat_compat.
   unfold indicator.
-  rewrite H.
+  rewrite (H _ i).
   crush.
-  erewrite filter_ext.
+  erewrite filter_ext_cond.
   apply eqRat_refl.
+  apply H.
+  crush.
+
+  rewrite (getSupport_not_In_evalDist_h).
+  rewrite ratMult_0_r.
+  rewrite ratMult_0_r.
   crush.
   crush.
+  Unshelve.
+  auto.
 Qed.
 
 Lemma eval_bexp_true_and : forall b1 b2 s, eval_bexp_true (And b1 b2) s = true <-> (eval_bexp_true b1 s = true ) /\ (eval_bexp_true b2 s = true).
@@ -488,39 +510,35 @@ Lemma fcf_condtrans_true_equiv : forall ls ds s b x, eval_bexp b s = Some true -
   unfold fst.
   destruct a.
   comp_skip.
-  unfold snd.
-  uf eval_bexp_true.
-  cut (eval_bexp b0 x0 = eval_bexp (And b b0) x0).
-  intro.
-  rewrite H2.
-  crush.
-
+  assert (eval_bexp (And b b0) x0 = eval_bexp b0 x0).
+  symmetry.
   apply bexp_and_given.
   eapply leaftrans_bexp_stable.
   apply H.
   apply H1.
-
-  destruct a.
-  uf leaf_condition.
-  unfold fst,snd.
-  unfold condition.
-  apply evalDist_repeat_equiv.
-  intros.
-  split; intros.
-  apply eval_bexp_true_and in H2.
-  destruct H2.
+  uf eval_bexp_true.
+  unfold snd.
+  rewrite H2.
   crush.
-  apply eval_bexp_true_and; split.
-  cut (eval_bexp b x0 = Some true).
-  intro.
-  unfold eval_bexp_true.
-  rewrite H3; auto.
+  uf leaf_condition.
+  unfold condition.
+  unfold fst, snd.
+  destruct a.
+  apply evalDist_repeat_equiv.
+  unfold eq_dec.
+  repeat decide equality.
+  intros.
+  uf eval_bexp_true.
+  assert (eval_bexp (And b b0) x0 = eval_bexp b0 x0).
+  symmetry.
+  apply bexp_and_given.
   eapply leaftrans_bexp_stable.
   apply H.
   apply H1.
-  apply H2.
-Qed.
-  
+  rewrite H2.
+  crush.
+  Qed.
+
 Lemma fcf_condtrans_false_0 : forall ls ds s b x, (forall x, well_formed_comp (ds x)) -> eval_bexp b s = Some false ->
   fcf_condtrans (map (fun p : cond_com * bexp => (fst p, And b (snd p))) (ls)) ds s x
   == 0.
@@ -631,8 +649,8 @@ Theorem mainTheorem (ds : distr_state) (c : com) : forall s x, wf_bexps c s -> w
   induction c; intros s x wfb H.
   uf fcf_trans.
 
-
-  (*cut (evalDist (x0 <-$ get_d d ds; fcf_trans c ds (set v x0 s)) ~~
+(*
+  cut (evalDist (x0 <-$ get_d d ds; fcf_trans c ds (set v x0 s)) ~~
        evalDist (x0 <-$ get_d d ds; distLift (fcf_condtrans (sym_exec c) ds (set v x0 s)))).
   intros H0; rewrite H0; clear H0.
   crush.
