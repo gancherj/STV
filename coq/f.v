@@ -1,8 +1,17 @@
+(* NOTE: the issue with the below proofs is that the original bexp's are being evaluated *before* running all commands, and the sym exec bexp's are being evaluated *after* running all commands. For commands which shadow, or evaluate to defaults, this will cause a discrepancy. I want to actually capture statements about states which are stable after forward execution. 
+
+This means I will have to modify the semantics of bexp's and so on to return error if variable is not found. Variables will not be able to be overwritten.
+
+*)
+
+
 Add LoadPath "~/fcf/src".
 Require Import FCF.FCF.
 Require Import Bool Arith String List CpdtTactics Program.
 Open Scope string_scope.
 Require FcfLems.
+
+Ltac inv e := remember e as p; destruct p; subst.
 
 Ltac uf e := unfold e; fold e.
 
@@ -28,7 +37,6 @@ Inductive bexp : Type :=
 | Or : bexp -> bexp -> bexp
 | Not : bexp -> bexp.
 
-Definition bexp_and (b : list bexp) := fold_left (fun acc x => And acc x) b Tt.
 
 Definition state := list (var * nat).
 
@@ -42,7 +50,32 @@ Fixpoint get (x:var) (s:state) : option nat :=
                    end
   end.
 
-Fixpoint set (x:var) (n:nat) (s:state) : state := (x,n) :: s.
+Definition in_state (x : var) (s : state) :=
+  match (get x s) with
+  | Some _ => true
+  | None => false
+  end.
+
+
+(* set does not overwrite variables. *)
+Fixpoint set (x:var) (n:nat) (s:state) : state :=
+  match s with
+    | nil => (x,n) :: nil
+    | (x', n') :: s' => if string_dec x x' then (x',n') :: s' else (x',n') :: (set x n s')
+  end.
+
+
+Lemma get_set : forall x s v v', get x s = Some v -> set x v' s = s.
+induction s.
+crush.
+simpl.
+destruct a.
+intros.
+destruct (string_dec x v).
+auto.
+rewrite (IHs v0 v' H).
+auto.
+Qed.
 
 (* We map binary operator expressions to underlying Coq
    operators on nat. *)
@@ -57,26 +90,166 @@ Definition eval_binop (b:binop) : nat -> nat -> nat :=
 (* The implementations of eval_aexp and eval_bexp are
    recursive translations into Coq terms. *)
 
-Fixpoint eval_aexp (e:aexp) (s:state) : nat := 
+Fixpoint eval_aexp (e:aexp) (s:state) : option nat := 
   match e with 
-    | Const n => n
+    | Const n => Some n
     | Var x => match (get x s) with
-               | Some v => v
-               | None => 0
+               | Some v => Some v
+               | None => None
                end
-    | Binop e1 b e2 => (eval_binop b) (eval_aexp e1 s) (eval_aexp e2 s)
+    | Binop e1 b e2 =>
+      match (eval_aexp e1 s, eval_aexp e2 s) with
+      | (Some x, Some y) => Some (eval_binop b x y)
+      | _ => None
+      end
   end.
 
-Fixpoint eval_bexp (b:bexp) (s:state) : bool := 
+Fixpoint eval_bexp (b:bexp) (s:state) : option bool := 
   match b with 
-    | Tt => true
-    | Ff => false
-    | Eq e1 e2 => Nat.eqb (eval_aexp e1 s) (eval_aexp e2 s)
-    | Lt e1 e2 => Nat.ltb (eval_aexp e1 s) (eval_aexp e2 s)
-    | And b1 b2 => eval_bexp b1 s && eval_bexp b2 s
-    | Or b1 b2 => eval_bexp b1 s || eval_bexp b2 s
-    | Not b => negb (eval_bexp b s)
+    | Tt => Some true
+    | Ff => Some false
+    | Eq e1 e2 =>
+      match (eval_aexp e1 s, eval_aexp e2 s) with
+      | (Some x, Some y) => Some (Nat.eqb x y)
+      | _ => None
+      end
+    | Lt e1 e2 => 
+      match (eval_aexp e1 s, eval_aexp e2 s) with
+      | (Some x, Some y) => Some (Nat.ltb x y)
+      | _ => None
+      end
+    | And b1 b2 => 
+      match (eval_bexp b1 s, eval_bexp b2 s) with
+      | (Some x, Some y) => Some (andb x y)
+      | _ => None
+      end
+    | Or b1 b2 => 
+      match (eval_bexp b1 s, eval_bexp b2 s) with
+      | (Some x, Some y) => Some (orb x y)
+      | _ => None
+      end
+    | Not b => 
+                    match (eval_bexp b s) with
+                    | Some x => Some (negb x)
+                    | _ => None
+                    end
   end.
+
+Lemma eval_aexp_set_stable : forall a s x v n, eval_aexp a s = Some n -> eval_aexp a (set x v s) = Some n.
+  induction a; uf eval_aexp.
+  crush.
+  intros.
+  remember (get v s) as p; destruct p.
+  symmetry in Heqp.
+  induction s.
+  crush.
+  simpl.
+  destruct a.
+  destruct (string_dec x v1); crush.
+  destruct (string_dec v v1); crush.
+  inversion H.
+
+  intros.
+  remember (eval_aexp a1 s) as p1; destruct p1.
+  remember (eval_aexp a2 s) as p2; destruct p2.
+  erewrite IHa1.
+  erewrite IHa2.
+  apply H.
+  crush.
+  crush.
+  inversion H.
+  inversion H.
+Qed.
+
+Lemma eval_bexp_set_stable : forall b s x v b', eval_bexp b s = Some b' -> eval_bexp b (set x v s) = Some b'.
+  induction b.
+  crush.
+  crush.
+  uf eval_bexp.
+  intros.
+  remember (eval_aexp a s) as p; destruct p.
+  remember (eval_aexp a0 s) as p'; destruct p'.
+  erewrite eval_aexp_set_stable.
+  erewrite eval_aexp_set_stable.
+  crush.
+  crush.
+  crush.
+  crush.
+  crush.
+
+  uf eval_bexp.
+  intros.
+  remember (eval_aexp a s) as p; destruct p.
+  remember (eval_aexp a0 s) as p'; destruct p'.
+  erewrite eval_aexp_set_stable.
+  erewrite eval_aexp_set_stable.
+  crush.
+  crush.
+  crush.
+  crush.
+  crush.
+
+  uf eval_bexp.
+  intros.
+  remember (eval_bexp b1 s) as p; destruct p.
+  remember (eval_bexp b2 s) as p'; destruct p'.
+  erewrite IHb1.
+  erewrite IHb2.
+  crush.
+  crush.
+  crush.
+  crush.
+  crush.
+
+  uf eval_bexp.
+  intros.
+  remember (eval_bexp b1 s) as p; destruct p.
+  remember (eval_bexp b2 s) as p'; destruct p'.
+  erewrite IHb1.
+  erewrite IHb2.
+  crush.
+  crush.
+  crush.
+  crush.
+  crush.
+  uf eval_bexp.
+  intros.
+  remember (eval_bexp b s) as p; destruct p.
+  erewrite IHb.
+  crush.
+  crush.
+  crush.
+Qed.
+(* TODO: show that if eval_bexp b s = Some b', then when s takes a step in either the first or second language to s', eval_bexp b s' = Some b'. This is true, due to that set does not overwrite variables.*)
+
+
+Definition eval_bexp_true (b : bexp) (s : state) :=
+  match (eval_bexp b s) with
+  | Some true => true
+  | _ => false
+  end.
+
+Lemma bexp_and_given : forall s b1 b2, eval_bexp b1 s = Some true -> (eval_bexp b2 s = eval_bexp (And b1 b2) s).
+intros.
+uf eval_bexp.
+unfold andb.
+rewrite H.
+destruct (eval_bexp b2 s); crush.
+Qed.
+
+Lemma bexp_and_given_neq : forall s b1 b2, eval_bexp b1 s <> Some true -> eval_bexp (And b1 b2) s <> Some true.
+intros.
+uf eval_bexp.
+destruct (eval_bexp b1 s).
+destruct b.
+contradiction.
+destruct (eval_bexp b2 s).
+unfold andb.
+auto.
+crush.
+crush.
+Qed.
+
 
 Definition distr := string.
 Definition distr_state := distr -> Comp nat.
@@ -103,13 +276,14 @@ Inductive cond_com : Type :=
 | CondSkip : cond_com.
 
 
-Fixpoint sym_exec (c : com) : list (cond_com * list bexp) :=
+
+Fixpoint sym_exec (c : com) : list (cond_com *  bexp) :=
   match c with
   | Sampl v d k =>
     map (fun p => (CondSampl v d (fst p), snd p)) (sym_exec k)
   | If b c1 c2 =>
-    (map (fun p => (fst p, b :: snd p)) (sym_exec c1)) ++ (map (fun p => (fst p, (Not b) :: snd p)) (sym_exec c2))
-  | Skip => (CondSkip, nil) :: nil
+    (map (fun p => (fst p, And b (snd p))) (sym_exec c1)) ++ (map (fun p => (fst p, And (Not b) (snd p))) (sym_exec c2))
+  | Skip => (CondSkip, Tt) :: nil
   end.
 
 Theorem sym_exec_neq_nil : forall c, sym_exec c <> [].
@@ -146,29 +320,27 @@ unfold eq_dec.
 apply string_dec.
 Qed.
 
-Fixpoint fcf_trans (c : com) (ds : distr_state) (s : state) : Comp state :=
+Fixpoint fcf_trans (c : com) (ds : distr_state) (s : state) : Comp (option state) :=
   match c with
   | Sampl v d k => 
      x <-$ (get_d d ds);
      fcf_trans k ds (set v x s)
   | If b c1 c2 =>
     match (eval_bexp b s) with
-    | true => fcf_trans c1 ds s
-    | false => fcf_trans c2 ds s
+    | Some true => fcf_trans c1 ds s
+    | Some false => fcf_trans c2 ds s
+    | _ => ret None
     end
-  | Skip => ret s
+  | Skip => (ret (Some s))
   end.
 
 Lemma wfcomp_trans : forall c ds sc, (forall x, well_formed_comp (ds x)) -> well_formed_comp (fcf_trans c ds sc).
 induction c; unfold get_d; simpl; wftac.
+intros;
+destruct (eval_bexp b sc); wftac.
 Qed.
 
 Notation "d1 ~~ d2" := (forall x, d1 x == d2 x) (at level 80).
-
-(* maybe need a stronger hypothesis for this *)
-Lemma evalDist_eq_getSupport_eq : forall {A} (c c' : Comp A), evalDist c ~~ evalDist c' -> getSupport c = getSupport c'.
-  admit.
-Admitted.
 
 Fixpoint fcf_leaftrans (c : cond_com) (ds : distr_state) (s : state) : Comp state :=
   match c with
@@ -178,15 +350,227 @@ Fixpoint fcf_leaftrans (c : cond_com) (ds : distr_state) (s : state) : Comp stat
   | CondSkip => ret s
   end.
 
+Lemma wfcomp_leaftrans: forall c ds s, (forall x, well_formed_comp (ds x)) -> well_formed_comp (fcf_leaftrans c ds s).
+  induction c; unfold get_d; simpl; wftac.
+Qed.
+
+Lemma leaftrans_bexp_stable : forall c ds s x b b', eval_bexp b s = Some b' -> In x (getSupport (fcf_leaftrans c ds s)) -> eval_bexp b x = Some b'.
+    induction c; intros.
+    simpl in H0.
+    apply in_getUnique_if in H0.
+    apply in_flatten in H0.
+    destruct H0.
+    destruct H0.
+    apply in_map_iff in H0.
+    destruct H0.
+    destruct H0.
+    subst.
+    eapply IHc.
+    eapply (eval_bexp_set_stable _ _ _ _ _ H).
+    apply H1.
+    inversion H0; subst.
+    auto.
+    inversion H1.
+Qed.
+
+
+    
+
+
 
 Definition condition {A : Set} (p : A -> bool) (sc : Comp A) := Repeat sc p.
 
-Definition leaf_prob (ds : distr_state) (leaf : cond_com * (list bexp)) (s' : state) := Pr[s <-$ fcf_leaftrans (fst leaf) ds s'; ret eval_bexp (bexp_and (snd leaf)) s].
+Definition leaf_prob (ds : distr_state) (leaf : cond_com * bexp) (s' : state) := Pr[s <-$ fcf_leaftrans (fst leaf) ds s'; ret (eval_bexp_true (snd leaf) s)].
 
-Definition leaf_condition (ds : distr_state) (leaf : cond_com * (list bexp)) (c : state) := condition (eval_bexp (bexp_and (snd leaf))) (fcf_leaftrans (fst leaf) ds c).
+Definition leaf_condition (ds : distr_state) (leaf : cond_com * bexp) (c : state) := condition (eval_bexp_true (snd leaf)) (fcf_leaftrans (fst leaf) ds c).
 
-Definition fcf_condtrans (ds : distr_state) (leaves : list (cond_com * (list bexp))) (c : state) : Distribution state := fun x =>
-  sumList leaves (fun leaf => (leaf_prob ds leaf c) * (evalDist (leaf_condition ds leaf c) x)).
+Definition leaf_val (ds : distr_state) (x : state) (c : state) leaf  :=
+  (leaf_prob ds leaf c) * (evalDist (leaf_condition ds leaf c) x).
+
+
+Definition fcf_condtrans (leaves : list (cond_com * bexp)) ds (s : state) : Distribution state := fun x =>
+  sumList leaves (leaf_val ds x s).
+
+Lemma fcf_condtrans_cons : forall l ls ds s x, fcf_condtrans (l :: ls) ds s x == leaf_val ds x s l + fcf_condtrans ls ds s x.
+  uf fcf_condtrans.
+  intros;
+  rewrite sumList_cons.
+  crush.
+  Qed.
+
+Lemma fcf_condtrans_app : forall l1 l2 ds s x, fcf_condtrans (l1 ++ l2) ds s x == (fcf_condtrans l1 ds s x) + (fcf_condtrans l2 ds s x).
+  crush.
+  uf fcf_condtrans.
+  rewrite sumList_app.
+  crush.
+  Qed.
+
+SearchAbout (sumList (map _ _) _).
+
+Lemma evalDist_repeat_equiv : forall {A : Set} (c : Comp A) (p1 p2 : A -> bool),
+    (forall x, (p1 x = p2 x)) -> forall x, evalDist (Repeat c p1) x == evalDist (Repeat c p2) x.
+  intros.
+  crush.
+  apply ratMult_eqRat_compat.
+  apply ratMult_eqRat_compat.
+  unfold indicator.
+  rewrite H.
+  crush.
+  erewrite filter_ext.
+  apply eqRat_refl.
+  crush.
+  crush.
+Qed.
+
+Lemma eval_bexp_true_and : forall b1 b2 s, eval_bexp_true (And b1 b2) s = true <-> (eval_bexp_true b1 s = true ) /\ (eval_bexp_true b2 s = true).
+  intros.
+  split.
+  intros.
+  unfold eval_bexp_true in H; fold eval_bexp_true in H.
+  remember (eval_bexp (And b1 b2) s) as p; destruct p.
+  destruct b.
+  unfold eval_bexp in Heqp; fold eval_bexp in Heqp.
+  inv (eval_bexp b1 s).
+  inv (eval_bexp b2 s).
+  crush.
+  unfold andb in H0.
+  destruct b; destruct b0.
+  crush.
+  uf eval_bexp_true.
+  rewrite <- Heqp0.
+  crush.
+  crush.
+  crush.
+  crush.
+  uf eval_bexp_true.
+  destruct b; destruct b0.
+  rewrite <- Heqp1.
+  crush.
+  simpl in H0; crush.
+  simpl in H0; crush.
+  simpl in H0; crush.
+  crush.
+  crush.
+  crush.
+  crush.
+
+  intros.
+  uf eval_bexp_true.
+  uf eval_bexp.
+  destruct H.
+  unfold eval_bexp_true in H.
+  inv (eval_bexp b1 s).
+  inv b.
+  inv (eval_bexp b2 s).
+  inv b.
+  crush.
+  unfold eval_bexp_true in H0.
+  rewrite <- Heqp0 in H0.
+  crush.
+  unfold eval_bexp_true in H0.
+  rewrite <- Heqp0 in H0.
+  crush.
+  crush.
+  crush.
+Qed.
+
+Lemma fcf_condtrans_true_equiv : forall ls ds s b x, eval_bexp b s = Some true ->
+  fcf_condtrans (map (fun p : cond_com * bexp => (fst p, And b (snd p))) (ls)) ds s x
+  == fcf_condtrans (ls) ds s x.
+  intros.
+  unfold fcf_condtrans.
+  rewrite sumList_map.
+  apply sumList_body_eq.
+  intros.
+  uf leaf_val.
+  uf leaf_prob.
+  apply ratMult_eqRat_compat.
+  unfold fst.
+  destruct a.
+  comp_skip.
+  unfold snd.
+  uf eval_bexp_true.
+  cut (eval_bexp b0 x0 = eval_bexp (And b b0) x0).
+  intro.
+  rewrite H2.
+  crush.
+
+  apply bexp_and_given.
+  eapply leaftrans_bexp_stable.
+  apply H.
+  apply H1.
+
+  destruct a.
+  uf leaf_condition.
+  unfold fst,snd.
+  unfold condition.
+  apply evalDist_repeat_equiv.
+  intros.
+  split; intros.
+  apply eval_bexp_true_and in H2.
+  destruct H2.
+  crush.
+  apply eval_bexp_true_and; split.
+  cut (eval_bexp b x0 = Some true).
+  intro.
+  unfold eval_bexp_true.
+  rewrite H3; auto.
+  eapply leaftrans_bexp_stable.
+  apply H.
+  apply H1.
+  apply H2.
+Qed.
+  
+Lemma fcf_condtrans_false_0 : forall ls ds s b x, (forall x, well_formed_comp (ds x)) -> eval_bexp b s = Some false ->
+  fcf_condtrans (map (fun p : cond_com * bexp => (fst p, And b (snd p))) (ls)) ds s x
+  == 0.
+  intros.
+  uf fcf_condtrans.
+  uf sumList; crush.
+  induction ls.
+  crush.
+  rewrite map_cons.
+  simpl.
+  rewrite fold_add_body_eq.
+  apply IHls.
+  uf leaf_val.
+  destruct a.
+  uf leaf_prob.
+  rewrite <- ratAdd_0_l.
+  apply ratMult_0.
+
+  left.
+  unfold fst, snd.
+  fcf_irr_l.
+  apply wfcomp_leaftrans.
+  apply H.
+  crush.
+  cut (eval_bexp (And b b0) x0 <> Some true).
+  intros H3.
+  unfold eval_bexp_true.
+  destruct (eval_bexp (And b b0) x0).
+  destruct b1.
+  contradiction.
+  destruct (EqDec_dec bool_EqDec false true).
+  inversion e.
+  crush.
+  destruct (EqDec_dec bool_EqDec false true).
+  inversion e.
+  crush.
+  cut (eval_bexp b x0 = Some false).
+  intros.
+  uf eval_bexp.
+  rewrite H2.
+  destruct (eval_bexp b0 x0).
+  crush.
+  crush.
+  eapply leaftrans_bexp_stable.
+  apply H0.
+  apply H1.
+  intros.
+  crush.
+Qed.
+  
 
 Lemma ret_true_1 : forall {A : Set} (C : Comp A), well_formed_comp C -> Pr [_ <-$ C; ret true] == 1.
   intros; fcf_irr_l.
@@ -225,108 +609,137 @@ Theorem fold_eq_init : forall {B} (xs : list B) (f : Rat -> B -> Rat) (i1 i2 : R
   crush.
 Qed.
 
-Theorem mainTheorem (ds : distr_state) (c : com) : forall s, wf_distr_state ds -> (evalDist (fcf_trans c ds s)) ~~ fcf_condtrans ds (sym_exec c) s.
-  induction c; intros.
+Axiom distLift : forall {A : Set} (d : Distribution A), Comp A.
+Axiom distLift_eq : forall {A : Set} (d : Distribution A), d ~~ (evalDist (distLift d)).
 
+
+Check fcf_trans.
+Check fcf_condtrans.
+
+Fixpoint wf_bexps (c : com) (s : state) :=
+  match c with
+  | Sampl x d k =>
+    wf_bexps k (set x 0 s)%nat
+  | If b c1 c2 =>
+    eval_bexp b s <> None /\ wf_bexps c1 s /\ wf_bexps c2 s
+  | Skip => True
+  end.
+
+(* todo: finish. sampl case should go through. skip case should go through. then, just complete the needed admits. *)
+
+Theorem mainTheorem (ds : distr_state) (c : com) : forall s x, wf_bexps c s -> wf_distr_state ds -> (evalDist (fcf_trans c ds s) (Some x)) == fcf_condtrans (sym_exec c) ds s x.
+  induction c; intros s x wfb H.
+  uf fcf_trans.
+
+
+  (*cut (evalDist (x0 <-$ get_d d ds; fcf_trans c ds (set v x0 s)) ~~
+       evalDist (x0 <-$ get_d d ds; distLift (fcf_condtrans (sym_exec c) ds (set v x0 s)))).
+  intros H0; rewrite H0; clear H0.
+  crush.
+  generalize (sym_exec c) as p.
+  induction p.
   crush.
   unfold fcf_condtrans.
-
-  cut (sumList (getSupport (get_d d ds))
-               (fun b : nat => evalDist (get_d d ds) b * evalDist (fcf_trans c ds (set v b s)) x) ==
-       sumList (getSupport (get_d d ds))
-               (fun b : nat => evalDist (get_d d ds) b * fcf_condtrans ds (sym_exec c) (set v b s) x)).
-  intros.
-  rewrite H0.
-  unfold fcf_condtrans.
-
-  cut (sumList (map (fun p : cond_com * list bexp => (CondSampl v d (fst p), snd p)) (sym_exec c))
-    (fun leaf : cond_com * list bexp => leaf_prob ds leaf s * evalDist (leaf_condition ds leaf s) x)
-
-       ==
-       sumList (sym_exec c)
-    (fun leaf : cond_com * list bexp => leaf_prob ds (CondSampl v d (fst leaf), snd leaf) s * evalDist (leaf_condition ds (CondSampl v d (fst leaf), snd leaf) s) x)).
-  intros.
-  rewrite H1; clear H1.
-  
+  uf sumList.
+  simpl.
+  admit. (* easy *)
+  simpl.
+  rewrite fcf_condtrans_cons.
+  rewrite <- IHp.
   cut ( sumList (getSupport (get_d d ds))
     (fun b : nat =>
-     evalDist (get_d d ds) b *
-     sumList (sym_exec c)
-       (fun leaf : cond_com * list bexp =>
-          leaf_prob ds leaf (set v b s) * evalDist (leaf_condition ds leaf (set v b s)) x)) ==
+       evalDist (get_d d ds) b * evalDist (distLift (fcf_condtrans (a :: p) ds (set v b s))) x)
+        ==
          sumList (getSupport (get_d d ds))
     (fun b : nat =>
-     sumList (sym_exec c)
-       (fun leaf : cond_com * list bexp =>
-        evalDist (get_d d ds) b *
-        leaf_prob ds leaf (set v b s) * evalDist (leaf_condition ds leaf (set v b s)) x))).
+     evalDist (get_d d ds) b * (leaf_val ds x (set v b s) a + evalDist (distLift (fcf_condtrans (p) ds (set v b s))) x))).
   intros.
-  rewrite H1; clear H0 H1.
-  rewrite sumList_comm.
+  rewrite H0; clear H0.
+  clear IHp.
+  admit. (* arithmetic i think is correct *)
   apply sumList_body_eq.
   intros.
+  apply ratMult_eqRat_compat.
+  crush.
+  rewrite <- distLift_eq.
+  rewrite fcf_condtrans_cons.
+  rewrite <- distLift_eq.
+  crush.
+  intros.
+  comp_skip.
+  rewrite <- distLift_eq.
+  apply IHc.
+  wftac.
+ *)
+ admit. 
+
+  (* if case *)
+  uf sym_exec.
+  rewrite fcf_condtrans_app.
+  uf fcf_trans.
+  remember (eval_bexp b s) as p.
+  destruct p.
+  symmetry in Heqp.
+  destruct b0.
+  pose proof (fcf_condtrans_true_equiv (sym_exec c1) ds _ _ x Heqp).
+  rewrite H0.
+  assert (eval_bexp (Not b) s = Some false).
+  uf eval_bexp; crush.
+  pose proof (fcf_condtrans_false_0 (sym_exec c2) ds _ _ x H H1).
+  rewrite H2.
+  rewrite <- ratAdd_0_r.
+  eapply IHc1.
+  crush.
+  crush.
+  
+  (* same as above *)
+
+  rewrite (fcf_condtrans_false_0 (sym_exec c1) ds _ _ x H Heqp).
+  assert (eval_bexp (Not b) s = Some true).
+  crush.
+  rewrite (fcf_condtrans_true_equiv (sym_exec c2) ds _ _ x H0).
+  rewrite IHc2.
+  rewrite <- ratAdd_0_l.
+  crush.
+  crush.
+  crush.
+
+  (* bexp is well formed, so this case is impossible *)
+  unfold wf_bexps in wfb; fold wf_bexps in wfb.
+  destruct wfb.
+  symmetry in Heqp.
+  contradiction.
+
+  (* skip case *)
+  intros.
+  crush.
+  unfold fcf_condtrans.
+  unfold sumList.
+  simpl.
+  unfold leaf_val.
   unfold leaf_prob.
   unfold leaf_condition.
-  destruct a.
+  unfold condition.
   unfold fst, snd.
-  uf fcf_leaftrans.
-  uf evalDist.
-cut (sumList (getSupport (x0 <-$ get_d d ds; fcf_leaftrans c0 ds (set v x0 s)))
-    (fun b : state =>
-     sumList (getSupport (get_d d ds))
-       (fun b0 : nat => evalDist (get_d d ds) b0 * evalDist (fcf_leaftrans c0 ds (set v b0 s)) b) *
-     (if EqDec_dec bool_EqDec (eval_bexp (bexp_and l) b) true then 1 else 0)) *
-  evalDist (condition (eval_bexp (bexp_and l)) (x0 <-$ get_d d ds; fcf_leaftrans c0 ds (set v x0 s)))
-    x
-
-==
-sumList (getSupport (x0 <-$ get_d d ds; fcf_leaftrans c0 ds (set v x0 s)))
-    (fun b : state =>
-     sumList (getSupport (get_d d ds))
-       (fun b0 : nat => evalDist (get_d d ds) b0 * evalDist (fcf_leaftrans c0 ds (set v b0 s)) b *
-     (if EqDec_dec bool_EqDec (eval_bexp (bexp_and l) b) true then 1 else 0) *
-  evalDist (condition (eval_bexp (bexp_and l)) (x0 <-$ get_d d ds; fcf_leaftrans c0 ds (set v x0 s)))
-    x))).
-intros.
-rewrite H1; clear H1.
-rewrite sumList_comm.
-apply sumList_body_eq.
-intros.
-admit.
-admit.
-admit.
-admit.
-apply sumList_body_eq; intros.
-apply ratMult_eqRat_compat.
-crush.
-apply IHc.
-wftac.
-
-uf fcf_trans.
-uf sym_exec.
-uf leaf_condition.
-uf leaf_prob.
-
-admit.
-crush.
-uf fcf_condtrans.
-uf sumList; crush.
-uf indicator.
-uf sumList; crush.
-uf leaf_prob.
-crush.
-uf sumList; crush.
-destruct_eq s x; subst.
-destruct_eq x x.
-destruct_eq true true.
-rattac.
-crush.
-crush.
-destruct_eq s s; destruct_eq true true.
-rattac.
-crush.
-crush.
-crush.
+  unfold eval_bexp_true.
+  unfold eval_bexp.
+  rewrite ret_true_1.
+  rewrite <- repeat_true.
+  unfold fcf_leaftrans.
+  unfold evalDist.
+  rewrite <- ratAdd_0_l.
+  rewrite ratMult_1_l.
+  destruct_eq s x.
+  subst.
+  destruct_eq (Some x) (Some x).
+  crush.
+  contradiction.
+  destruct_eq (Some s) (Some x).
+  injection e; intros.
+  contradiction.
+  crush.
+  unfold fcf_leaftrans; wftac.
+  unfold fcf_leaftrans; wftac.
 
 Admitted.
 
