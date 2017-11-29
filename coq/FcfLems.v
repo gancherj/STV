@@ -1,164 +1,94 @@
 Add LoadPath "~/fcf/src".
-Require Import Program FCF.FCF CpdtTactics.
+Require Import FCF.FCF.
+Require Import CpdtTactics.
+Require Import String.
 
-
-Lemma sumList_single : forall {A : Set} (x:A) (f : A -> Rat), sumList (x :: nil) f == f x.
-  unfold sumList; unfold fold_left; simpl.
-  intros;
+Lemma sumList_single : forall {A : Set} (f : A -> Rat) (x : A), sumList (x :: nil) f == f x.
+  unfold sumList; crush.
   rewrite <- ratAdd_0_l.
-  apply eqRat_refl.
+  crush.
   Qed.
 
-Lemma unfold_repeat_true : forall {A : Set} (P : A -> bool) (C : Comp A) x, (P x) = true -> evalDist (Repeat C P) x == (evalDist C x) * ratInverse (sumList (filter P (getSupport C)) (evalDist C)).
+Lemma sumList_nil : forall {A : Set} (f : A -> Rat), @sumList A nil f == 0.
+
+
+  unfold sumList.
+  crush.
+  Qed.
+
+
+Lemma sumList_swap : forall {A B : Set} (xs : list A) (ys : list B) f,
+    sumList xs (fun x => sumList ys (fun y => f x y)) == sumList ys (fun y => sumList xs (fun x => f x y)).
+  induction xs.
+  induction ys.
+  unfold sumList; crush.
+  intros; repeat rewrite sumList_cons.
+  repeat rewrite sumList_nil.
+  rewrite <- ratAdd_0_l.
+  apply eqRat_symm.
+  apply sumList_0.
+  intros; rewrite sumList_nil; crush.
   intros.
+  induction ys.
+  rewrite sumList_cons.
+  rewrite IHxs.
+  repeat rewrite sumList_nil.
+  rattac.
+
+  repeat rewrite sumList_cons.
+  rewrite IHxs.
+  repeat rewrite sumList_cons.
+  rewrite <- IHys.
+  repeat rewrite sumList_cons.
+  generalize (f a a0) (sumList ys (fun y => f a y)) (sumList xs (fun x => f x a0)).
+  intros.
+  rewrite IHxs.
+  generalize (sumList ys (fun y => sumList xs (fun x => f x y))).
+  intros.
+  rewrite ratAdd_assoc.
+  rewrite ratAdd_assoc.
+  apply ratAdd_eqRat_compat.
   crush.
-  unfold indicator.
+  rewrite ratAdd_comm.
+  rewrite ratAdd_assoc.
+  apply ratAdd_eqRat_compat.
   crush.
-  rewrite ratMult_comm.
-  apply ratMult_eqRat_compat.
-  apply eqRat_refl.
-  rewrite ratMult_1_l.
-  apply eqRat_refl.
+  apply ratAdd_comm.
 Qed.
 
-Lemma unfold_repeat_false : forall {A : Set} (P : A -> bool) (C : Comp A) x, (P x) = false -> evalDist (Repeat C P) x == 0.
+Lemma getUnique_eq : forall {A : Set} (ls1 ls2 : list A) e1 e2, ls1 = ls2 -> getUnique ls1 e1 = getUnique ls2 e2.
   intros.
-  crush; unfold indicator; crush;
-    repeat rewrite ratMult_0_l; apply eqRat_refl.
-  Qed.
- 
-Lemma repeat_in_support : forall {A : Set} (P : A -> bool) (C : Comp A) x, In x (getSupport (Repeat C P)) -> (P x) = true.
+  subst.
+  induction ls2.
+  crush.
+  simpl.
+
+  destruct (in_dec e1 a (getUnique ls2 e1)).
+  destruct (in_dec e2 a (getUnique ls2 e2)).
+  auto.
+  symmetry.
+  pose proof (in_getUnique).
+  apply in_getUnique_if in i.
+  eapply in_getUnique in i.
+  exfalso; apply (n i).
+  destruct (in_dec e2 a (getUnique ls2 e2)).
+  apply in_getUnique_if in i.
+  eapply in_getUnique in i.
+  exfalso; apply (n i).
+  rewrite IHls2.
+  auto.
+Qed.
+
+Lemma repeat_In : forall {A} (c : Comp A) (x : A) (p : A -> bool), In x (getSupport (Repeat c p)) -> p x = true.
   intros.
   simpl in H.
-  apply filter_In in H.
-  crush.
+  pose proof (filter_In p x (getSupport c)).
+  apply H0 in H.
+  destruct H; auto.
 Qed.
 
-
-Definition negP {A : Set} (P : A -> bool) := fun x => negb (P x).
-
-Definition cond_prob {A : Set} (C : Comp A) (P : A -> bool) := sumList (filter P (getSupport C)) (evalDist C).
-
-Lemma cond_prob_Pr {A : Set} (C : Comp A) (P : A -> bool) : (cond_prob C P) == Pr [x <-$ C; ret ((P x) ?= true)].
-  admit. (*calculation about filter *)
-Admitted.
-
-
-Lemma ratMult_comm_assoc_r : forall a b c, a * (b * c) == a * (c * b).
-  intros;
-  apply ratMult_eqRat_compat;
-  [apply eqRat_refl |
-  apply ratMult_comm].
+Instance string_EqDec : EqDec string.
+apply dec_EqDec.
+unfold eq_dec.
+apply string_dec.
 Qed.
-
-Lemma ratMult_comm_assoc_l : forall a b c, (a * b) * c == (b * a) * c.
-  intros; apply ratMult_eqRat_compat;
-  [apply ratMult_comm | apply eqRat_refl].
-Qed.
-                                                                     
-Lemma repeat_split : forall {A : Set} (P : A -> bool) (C : Comp A), well_formed_comp (Repeat C P) -> well_formed_comp (Repeat C (negP P)) -> forall x, evalDist C x == (cond_prob C P) * (evalDist (Repeat C P) x) + (cond_prob C (negP P)) * (evalDist (Repeat C (negP P)) x).
-  intros.
-  crush.
-  unfold indicator, negP, negb, cond_prob.
-  destruct (P x);
-  repeat rewrite ratMult_0_l;
-  repeat rewrite ratMult_0_r;
-  try rewrite <- ratAdd_0_r.
-  rewrite ratMult_1_l.
-  rewrite <- ratMult_assoc.
-  rewrite ratMult_comm.
-  rewrite ratMult_comm_assoc_r.
-  rewrite ratInverse_prod_1.
-  rewrite ratMult_1_r; apply eqRat_refl.
-  admit. (* due to well formedness *)
-  rewrite <- ratAdd_0_l.
-  rewrite ratMult_1_l.
-  rewrite <- ratMult_assoc.
-  rewrite ratMult_comm.
-  rewrite ratMult_comm_assoc_r.
-  rewrite ratInverse_prod_1.
-  rewrite ratMult_1_r; apply eqRat_refl.
-  admit. (* due to well-formedness *)
-Admitted.
-
-Lemma filter_exists {A : Set} (l : list A) (P : A -> bool) : {l = nil} + {filter P l <> nil /\ ((filter (negP P) l) = nil)} + { filter P l = nil /\  (filter (negP P) l) <> nil } + {filter P l <> nil /\  (filter (negP P) l) <> nil}.
-  induction l.
-  left; left; left.
-  auto.
-  rewrite filter_cons.
-  remember (P a) as b.
-  assert (negP P a = negb b).
-  unfold negP; rewrite Heqb; auto.
-  unfold negb in H.
-  rewrite filter_cons; rewrite H.
-
-
-  destruct IHl.
-  destruct s.
-  destruct s.
-  destruct b; subst.
-  left; left; right; crush.
-  unfold filter.
-  left; right; crush.
-  destruct b; subst.
-  left; left; right; crush.
-  right; crush.
-  destruct b; subst.
-  right; crush.
-  left; right; crush.
-  destruct b; subst.
-  right; crush.
-  right; crush.
-Qed.
-
-
-
-Lemma if_repeat_decomp_ {A B : Set} `{EqDec A} `{EqDec B} (C : Comp A) (C1 C2 : A -> Comp B) (P : A -> bool) : (forall x, well_formed_comp (C1 x)) -> (forall x, well_formed_comp (C2 x)) -> well_formed_comp (Repeat C P) -> well_formed_comp (Repeat C (fun n => negb (P n))) -> forall a a', evalDist (x <-$ C; y <-$ (if (P x) then C1 x else C2 x); ret (x,y)) (a, a') == (Pr [x <-$ C; ret (P x)]) * (evalDist (x <-$ Repeat C P; y <-$ C1 x; ret (x,y)) (a, a')) + (Pr [x <-$ C; ret (negb (P x))]) * (evalDist (x <-$ Repeat C (fun n => negb (P n)); y <-$ C2 x; ret (x,y)) (a, a')).
-  intros.
-  rewrite (repeat_split (fun p => (P (fst p)))).
-  remember (P a) as b.
-  destruct b.
-  apply ratAdd_eqRat_compat.
-  apply ratMult_eqRat_compat.
-  rewrite cond_prob_Pr.
-  fcf_inline leftc.
-  comp_skip.
-  fcf_inline leftc.
-  remember (P x) as b; destruct b; subst.
-  fcf_irr_l.
-  simpl.
-  admit.
-  fcf_irr_l.
-  simpl.
-  admit.
-  admit.
-
-  apply ratMult_eqRat_compat.
-  rewrite cond_prob_Pr.
-  admit. (* similar *)
-
-  admit.
-  apply ratAdd_eqRat_compat.
-  apply ratMult_eqRat_compat.
-  admit.
-  admit.
-  apply ratMult_eqRat_compat.
-  admit.
-  admit.
-  admit. (* from H1 and H2 *)
-  admit. (* from H1 and H2 *)
-Admitted.
-
-
-Lemma if_repeat_decomp_both {A B : Set} `{EqDec A} `{EqDec B} (C : Comp A) (C1 C2 : A -> Comp B) (P : A -> bool) : (forall x, well_formed_comp (C1 x)) -> (forall x, well_formed_comp (C2 x)) -> well_formed_comp (Repeat C P) -> well_formed_comp (Repeat C (fun n => negb (P n))) -> forall a, evalDist (x <-$ C; (if (P x) then C1 x else C2 x)) a == (Pr [x <-$ C; ret (P x)]) * (evalDist (x <-$ Repeat C P; C1 x) a) + (Pr [x <-$ C; ret (negb (P x))]) * (evalDist (x <-$ Repeat C (fun n => negb (P n)); C2 x) a).
-  admit. (* follows from above *)
-Admitted.
-
-Lemma if_repeat_decomp_l {A B : Set} `{EqDec A} `{EqDec B} (C : Comp A) (C1 C2 : A -> Comp B) (P : A -> bool) : (forall x, well_formed_comp (C1 x)) -> well_formed_comp (Repeat C P) -> (cond_prob C (negP P)) == 0 -> forall a, evalDist (x <-$ C; (if (P x) then C1 x else C2 x)) a == (evalDist (x <-$ Repeat C P; C1 x) a) .
-  admit.
-  (* using unfold_repeat_true / false *)
-Admitted.
-
-Lemma if_repeat_decomp_r {A B : Set} `{EqDec A} `{EqDec B} (C : Comp A) (C1 C2 : A -> Comp B) (P : A -> bool) : (forall x, well_formed_comp (C1 x)) -> well_formed_comp (Repeat C (negP P)) -> (cond_prob C P) == 0 -> forall a, evalDist (x <-$ C; (if (P x) then C1 x else C2 x)) a == (evalDist (x <-$ Repeat C (negP P); C2 x) a) .
-  admit.
-Admitted.
