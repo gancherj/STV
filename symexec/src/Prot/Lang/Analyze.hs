@@ -83,5 +83,37 @@ samplingsToDag ss =
                   [] -> [[]]
                   ls -> 
                       let nextLvls = go (ss \\ thisLvl) (Set.union varsSeen (Set.fromList (concatMap freeVars (map _sampargs thisLvl)))) in
-                      [thisLvl] ++ nextLvls
+                      (thisLvl : nextLvls)
+
+sampNamesByLevel :: [[Sampling]] -> [Set.Set String]
+sampNamesByLevel dag = map (\lvl -> Set.fromList (map _sampname lvl)) dag
+
+sampNamesCumul_ :: [Set.Set String] -> [Set.Set String]
+sampNamesCumul_ ns =
+    case ns of
+      (s : ss) -> 
+          s : (sampNamesCumul_ (map (Set.union s) ss))
+      [] -> []
+
+sampNamesCumul :: [[Sampling]] -> [Set.Set String]
+sampNamesCumul = sampNamesCumul_ . sampNamesByLevel
+
+condsCumul :: [Expr TBool] -> [Set.Set String] -> [[Expr TBool]]
+condsCumul es [] = []
+condsCumul es (l:ls) =
+    (filter (\e -> Set.isSubsetOf (Set.fromList $ freeVars e) l) es) : (condsCumul es ls)
+
+
+
+data LeafDag ret where
+    LeafDag :: {
+        _leafSampDag :: [[Sampling]],
+        _leafCondsByLvl :: [[Expr TBool]],
+        _leafDagRet :: Expr ret} -> LeafDag ret
+
+mkDag :: Leaf ret -> LeafDag ret
+mkDag (Leaf samps conds ret) =
+    LeafDag dag (condsCumul conds (sampNamesCumul dag)) ret
+        where
+            dag = samplingsToDag samps
 
