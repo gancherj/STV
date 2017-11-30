@@ -3,9 +3,14 @@ import Prot.Lang.Command
 import Prot.Lang.Types
 import Prot.Lang.Expr
 import Data.List
+import qualified Data.Set as Set
 import qualified Data.Map.Strict as Map
 
 data Sampling = forall tp. Sampling { _sampdistr :: Distr tp, _sampname :: String, _sampargs :: [SomeExp] }
+
+instance Eq Sampling where
+    (==) (Sampling distr name args) (Sampling distr' name' args') =
+        (compareDistr distr distr') && (name == name') && (args == args')
 
 ppSampling :: Sampling -> String
 ppSampling (Sampling d x es) = x ++ " <- " ++ (ppDistr d) ++ (concatMap ppSomeExp es) 
@@ -58,4 +63,25 @@ instance Show (Leaf rtp) where
     show (Leaf samps conds ret) =
         "Samplings: " ++ (concatMap ppSampling samps) ++ "\n Conds:" ++  (concatMap (\e -> (ppExpr e) ++ " ") conds) ++ "\n Ret: " ++ (ppExpr ret) ++ "\n \n"
 
+
+
+------
+--
+--
+
+rankZeroBy :: Set.Set String -> [Sampling] -> [Sampling]
+rankZeroBy varsSeen = filter (\s -> Set.null (Set.fromList (concatMap freeVars (_sampargs s)) Set.\\ varsSeen))
+
+samplingsToDag :: [Sampling] -> [[Sampling]]
+samplingsToDag ss =
+    go ss Set.empty
+        where
+            go :: [Sampling] -> Set.Set String -> [[Sampling]]
+            go ss varsSeen =
+                let thisLvl = rankZeroBy varsSeen ss in
+                case thisLvl of
+                  [] -> [[]]
+                  ls -> 
+                      let nextLvls = go (ss \\ thisLvl) (Set.union varsSeen (Set.fromList (concatMap freeVars (map _sampargs thisLvl)))) in
+                      [thisLvl] ++ nextLvls
 

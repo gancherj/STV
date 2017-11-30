@@ -1,3 +1,4 @@
+{-# LANGUAGE AllowAmbiguousTypes #-}
 module Prot.Lang.Expr where
 import Prot.Lang.Types
 import Data.SBV
@@ -30,12 +31,20 @@ data App (f :: Type -> *) (tp :: Type) where
     IntNeq :: !(f TInt) -> !(f TInt) -> App f TBool
 
     MkTuple :: !(CtxRepr ctx) -> !(Ctx.Assignment f ctx) -> App f (TTuple ctx)
-    TupleGet :: !(f (TTuple ctx)) -> !(Ctx.Index ctx tp) -> !(TypeRepr tp) -> App f tp
+    TupleGet :: !(CtxRepr ctx) -> !(f (TTuple ctx)) -> !(Ctx.Index ctx tp) -> !(TypeRepr tp) -> App f tp
     TupleSet :: !(CtxRepr ctx) -> !(f (TTuple ctx)) -> !(Ctx.Index ctx tp) -> !(f tp) -> App f (TTuple ctx)
 
 
 
 data Expr tp = Expr !(App Expr tp) | AtomExpr !(Atom tp)
+
+instance SynEq Expr where
+    synEq (Expr e1) (Expr e2) = synEq e1 e2
+    synEq (AtomExpr (Atom x tp1)) (AtomExpr (Atom y tp2)) = 
+        case testEquality tp1 tp2 of
+          Just Refl -> x ==y
+          Nothing -> False
+    synEq _ _ = False
 
 class IsExpr a where
 
@@ -64,7 +73,7 @@ instance TypeOf Expr where
     typeOf (Expr (IntEq _ _)) = TBoolRepr
     typeOf (Expr (IntNeq _ _)) = TBoolRepr
     typeOf (Expr (MkTuple cr asgn)) = TTupleRepr cr
-    typeOf (Expr (TupleGet cr ind tp)) = tp
+    typeOf (Expr (TupleGet _ cr ind tp)) = tp
     typeOf (Expr (TupleSet cr _ _ _)) = TTupleRepr cr
 
 
@@ -80,6 +89,13 @@ mkAtom :: String -> TypeRepr tp -> Expr tp
 mkAtom s tr = AtomExpr $ Atom s tr
 
 data SomeExp = forall tp. SomeExp (TypeRepr tp) (Expr tp)
+
+instance Eq SomeExp where
+    (==) (SomeExp t1 e1) (SomeExp t2 e2) =
+        case testEquality t1 t2 of
+          Just Refl -> synEq e1 e2
+          Nothing -> False
+
 
 ppSomeExp :: SomeExp -> String
 ppSomeExp (SomeExp _ e) = ppExpr e
@@ -112,7 +128,7 @@ ppExpr (Expr (IntEq e1 e2)) = (ppExpr e1) ++ " == " ++ (ppExpr e2)
 ppExpr (Expr (IntNeq e1 e2)) = (ppExpr e1) ++ " != " ++ (ppExpr e2)
 
 ppExpr (Expr (MkTuple cr asgn)) = show asgn
-ppExpr (Expr (TupleGet ag ind tp)) = (ppExpr ag) ++ "[" ++ (show ind) ++ "]"
+ppExpr (Expr (TupleGet _ ag ind tp)) = (ppExpr ag) ++ "[" ++ (show ind) ++ "]"
 ppExpr (Expr (TupleSet cr ag ind val)) = (ppExpr ag) ++ "{" ++ (show ind) ++ " -> " ++ (ppExpr val) ++ "}"
 
 --- utility functions
@@ -132,7 +148,7 @@ getIth :: SomeExp -> Int -> SomeExp
 getIth (SomeExp (TTupleRepr ctx) e) i 
  | Just (Some idx) <- Ctx.intIndex (fromIntegral i) (Ctx.size ctx) =
      let tpr = ctx Ctx.! idx in
-         SomeExp tpr (Expr (TupleGet e idx tpr))
+         SomeExp tpr (Expr (TupleGet ctx e idx tpr))
 getIth _ _ = error "bad getIth"
 
 
@@ -181,6 +197,42 @@ instance Boolean (Expr TBool) where
     (&&&) e1 e2 = Expr (BoolAnd e1 e2)
     (|||) e1 e2 = Expr (BoolOr e1 e2)
 
+class SynEq (f :: k -> *) where
+    synEq :: f a -> f b -> Bool
+
+instance (SynEq f) => SynEq (App f) where
+   synEq (IntLit i) (IntLit i2) = i == i2
+   synEq  (IntAdd e1 e2) (IntAdd e1' e2') = (synEq e1 e1') && (synEq e2 e2')
+   synEq  (IntMul e1 e2) (IntMul e1' e2') = (synEq e1 e1') && (synEq e2 e2')
+   synEq  (IntNeg e1 ) (IntNeg e1' ) = (synEq e1 e1') 
+
+   synEq  (BoolLit b) (BoolLit b') = b == b'
+   synEq  (BoolAnd e1 e2) (BoolAnd e1' e2') = (synEq e1 e1') && (synEq e2 e2')
+   synEq  (BoolOr e1 e2) (BoolOr e1' e2') = (synEq e1 e1') && (synEq e2 e2')
+   synEq  (BoolXor e1 e2) (BoolXor e1' e2') = (synEq e1 e1') && (synEq e2 e2')
+   synEq  (BoolNot e1 ) (BoolNot e1' ) = (synEq e1 e1') 
+
+   synEq  (IntLe e1 e2) (IntLe e1' e2') = (synEq e1 e1') && (synEq e2 e2')
+   synEq  (IntLt e1 e2) (IntLt e1' e2') = (synEq e1 e1') && (synEq e2 e2')
+   synEq  (IntGt e1 e2) (IntGt e1' e2') = (synEq e1 e1') && (synEq e2 e2')
+   synEq  (IntEq e1 e2) (IntEq e1' e2') = (synEq e1 e1') && (synEq e2 e2')
+   synEq  (IntNeq e1 e2) (IntNeq e1' e2') = (synEq e1 e1') && (synEq e2 e2')
+
+   synEq  (MkTuple repr asgn) (MkTuple repr1 asgn1) =
+       case testEquality repr repr1 of
+          Just Refl -> error "unimp"
+          Nothing -> False
+   synEq (TupleGet crepr e ind tr) (TupleGet crepr' e' ind' tr') =
+    case (testEquality tr tr', testEquality crepr crepr') of
+      (Just Refl, Just Refl) -> (synEq e e') && (ind == ind')
+      _ -> False
+    
+   synEq (TupleSet repr e ind tup) (TupleSet repr' e' ind' tup') =
+    case (testEquality repr repr') of
+      Just Refl -> (synEq e e') && (Ctx.indexVal ind == Ctx.indexVal ind') && (synEq tup tup')
+      Nothing -> False
+
+   synEq  _ _ = False
 
 
 --- expr utility functions
@@ -220,7 +272,7 @@ exprSub emap e = runFor (Map.size emap) (go emap) e
           go emap (Expr (IntNeq e1 e2)) = Expr (IntNeq (go emap e1) (go emap e2))
 
           go emap (Expr (MkTuple cr asgn)) = Expr (MkTuple cr (F.fmapFC (go emap) asgn))
-          go emap (Expr (TupleGet tup ind etp)) = Expr (TupleGet (go emap tup) ind etp)
+          go emap (Expr (TupleGet ctx tup ind etp)) = Expr (TupleGet ctx (go emap tup) ind etp)
           go emap (Expr (TupleSet ctx tup ind e)) = Expr (TupleSet ctx (go emap tup) ind (go emap e))
 
 someExprSub :: Map.Map String SomeExp -> SomeExp -> SomeExp
@@ -253,8 +305,11 @@ instance FreeVar (Expr tp) where
     freeVars (Expr (IntNeq e1 e2)) = (freeVars e1) ++ (freeVars e2)
 
     freeVars (Expr (MkTuple _ asgn)) = concat $ toListFC freeVars asgn
-    freeVars (Expr (TupleGet tup _ _)) = freeVars tup
+    freeVars (Expr (TupleGet _ tup _ _)) = freeVars tup
     freeVars (Expr (TupleSet _ tup _ e)) = (freeVars tup) ++ (freeVars e)
 
 instance FreeVar SomeExp where
     freeVars (SomeExp tp e) = freeVars e
+
+instance (FreeVar a) => (FreeVar [a]) where
+    freeVars as = concatMap freeVars as

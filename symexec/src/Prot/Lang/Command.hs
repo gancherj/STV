@@ -5,9 +5,19 @@ import Data.Type.Equality
 import Prot.Lang.Expr
 
 data Distr tp where
+    -- todo this representation of constraint for symdistr is problematic
     SymDistr :: String -> TypeRepr tp -> (Expr tp -> [SomeExp] -> [Expr TBool]) -> Distr tp
     UnifInt :: Integer -> Integer -> Distr TInt
     UnifBool :: Distr TBool
+
+compareDistr :: Distr tp -> Distr tp1 -> Bool
+compareDistr (UnifInt i1 i2) (UnifInt i1' i2') = (i1 == i1') && (i2 == i2')
+compareDistr (UnifBool) (UnifBool) = True
+compareDistr (SymDistr x tp _) (SymDistr y tp2 _) = -- constraint functions not compared
+    case testEquality tp tp2 of
+      Just Refl -> x == y
+      Nothing -> False
+compareDistr _ _ = False
 
 ppDistr :: Distr tp -> String
 ppDistr (SymDistr x _ _) = x

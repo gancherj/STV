@@ -82,7 +82,7 @@ evalExpr emap (Expr (IntEq e1 e2)) = (evalExpr emap e1) .== (evalExpr emap e2)
 evalExpr emap (Expr (IntNeq e1 e2)) = (evalExpr emap e1) ./= (evalExpr emap e2)
 
 evalExpr emap (Expr (MkTuple cr asgn)) = F.fmapFC (SI . (evalExpr emap)) asgn
-evalExpr emap (Expr (TupleGet tup ind tp)) = unSI $ (evalExpr emap tup) Ctx.! ind
+evalExpr emap (Expr (TupleGet _ tup ind tp)) = unSI $ (evalExpr emap tup) Ctx.! ind
 evalExpr emap (Expr (TupleSet cr tup ind e)) = 
     Ctx.update ind (SI $ evalExpr emap e) (evalExpr emap tup)
 
