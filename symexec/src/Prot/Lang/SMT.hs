@@ -18,7 +18,7 @@ import Data.Parameterized.Some
 import Data.Parameterized.TraversableFC as F
 import Data.Parameterized.TraversableF as F
 import Control.Monad.Trans.Class
-import Control.Monad.Trans.List
+import Data.Functor.Identity
 
 allPairs :: Int -> [(Int,Int, ())]
 allPairs max = concatMap (\i -> map (\j -> (i,j, ())) [0..max]) [0..max]
@@ -27,7 +27,10 @@ perfectMatchingsM :: Monad m => (Int -> Int -> m Bool) -> Int -> m [[(Int,Int)]]
 perfectMatchingsM edge max = do
     edges <- filterM (\(i,j,_) -> edge i j) (allPairs max) 
     let (graph :: G.Gr () ()) = G.mkGraph (map (\i -> (i,())) [0..max]) edges 
-    return $ filter (\m -> length m == max) (G.maximalMatchings graph)
+    let res = filter (\m -> length m == max) (G.maximalMatchings graph)
+    case res of
+      [[]] -> return []
+      _ -> return res
 
 hasPerfectMatchingM :: Monad m => (Int -> Int -> m Bool) -> Int -> m Bool
 hasPerfectMatchingM edge max = do
@@ -45,6 +48,10 @@ genPerfectMatchingsByM f xs ys | length xs /= length ys = return []
                                  ns <- perfectMatchingsM edge (length xs - 1) 
                                  return $ map (\l -> map (\(i1,i2) -> (xs !! i1, ys !! i2)) l) ns
 
+genPerfectMatchingsBy :: (a -> a -> Bool) -> [a] -> [a] -> [[(a,a)]]
+genPerfectMatchingsBy f xs ys =
+    runIdentity $ genPerfectMatchingsByM (\x y -> return $ f x y) xs ys
+
 hasPerfectMatchingByM :: Monad m => (a -> a -> m Bool) -> [a] -> [a] -> m Bool
 hasPerfectMatchingByM f xs ys | length xs /= length ys = return False
                               | otherwise = do
@@ -54,15 +61,15 @@ hasPerfectMatchingByM f xs ys | length xs /= length ys = return False
                                   hasPerfectMatchingM edge (length xs - 1)
     
 -- Given two compatible LeafDags and a certain level, return the list of matchings which respect the distributions.
-genDagLevelMatchings :: Monad m => LeafDag ret -> LeafDag ret -> Int -> m [[(Sampling, Sampling)]]
+genDagLevelMatchings :: LeafDag ret -> LeafDag ret -> Int -> [[(Sampling, Sampling)]]
 genDagLevelMatchings (LeafDag dag _ _) (LeafDag dag' _ _) lvl 
-    | lvl >= length dag = fail $ "bad lvl for dag: dag has length " ++ show (length dag) ++ " while lvl is " ++ (show lvl)
-    | lvl >= length dag' = fail "bad lvl for dag'" 
+    | lvl >= length dag = error $ "bad lvl for dag: dag has length " ++ show (length dag) ++ " while lvl is " ++ (show lvl)
+    | lvl >= length dag' = error "bad lvl for dag'" 
     | otherwise =
-        genPerfectMatchingsByM samplCompat (dag !! lvl) (dag' !! lvl)
+        genPerfectMatchingsBy samplCompat (dag !! lvl) (dag' !! lvl)
         where
-            samplCompat :: Monad m => Sampling -> Sampling -> m Bool
-            samplCompat (Sampling d1 _ _) (Sampling d2 _ _) = return $ compareDistr d1 d2  
+            samplCompat :: Sampling -> Sampling -> Bool
+            samplCompat (Sampling d1 _ _) (Sampling d2 _ _) = compareDistr d1 d2  
 
 ppMatching :: [(Sampling, Sampling)] -> String
 ppMatching = concatMap (\p -> "(" ++ ppSampling (fst p) ++ ", " ++ ppSampling (snd p) ++ ") ")
@@ -98,20 +105,59 @@ matchingRespectsArgsConds matching phi phi' = do
     b2 <- matchingRespectsArgs matching phi'
     return $ b1 && b2
 
+filterMaybe :: [Maybe a] -> [a]
+filterMaybe [] = []
+filterMaybe ((Just a) : xs) = a : (filterMaybe xs)
+filterMaybe (Nothing : xs) = filterMaybe xs
+
+compatPairsM :: Monad m => (a -> b -> m Bool) -> [a] -> [b] -> m [(a,b)]
+compatPairsM f xs ys = do
+    pairs <- forM xs (\x -> forM ys (\y -> do {b <- f x y; if b then return $ Just (x,y) else return Nothing}))
+    return $ filterMaybe $ concat pairs
+
+
+
+
 -- assumes dags are of the same shape
-dagEquiv_ :: LeafDag ret -> LeafDag ret -> Int -> ListT IO [[(Sampling, Sampling)]]
-dagEquiv_ d1 d2 0 =
-    lift $ filterM (\m -> matchingRespectsArgsConds m (dagCondLevel d1 0) (dagCondLevel d2 0)) =<< genDagLevelMatchings d1 d2 0
+dagEquiv_ :: LeafDag ret -> LeafDag ret -> Int ->  IO [[(Sampling, Sampling)]]
+dagEquiv_ d1 d2 0 = do
+    putStrLn "stage 0"
+    filterM (\m -> matchingRespectsArgs m []) (genDagLevelMatchings d1 d2 0) -- Check if initial samplings are equivalent
+
 dagEquiv_ d1 d2 i = do
+    putStrLn $ "stage " ++ (show i)
     -- sample a distribution from below level
-    alpha <- dagEquiv_ d1 d2 (i - 1)
-    -- get a bijection for this level
-    alphaI <- lift $ filterM (\m -> matchingRespectsArgsConds m (dagCondLevel d1 i) (dagCondLevel d2 i)) =<< genDagLevelMatchings d1 d2 i
-    return $ alpha ++ alphaI
+    alphas <- dagEquiv_ d1 d2 (i - 1)
+    -- get a bijection for this level, respecting the previous constraints.
+    pairs <- compatPairsM (\alpha alphaI ->
+        matchingRespectsArgsConds (alpha ++ alphaI) (dagCondLevel d1 (i - 1)) (dagCondLevel d2 (i - 1))) alphas (genDagLevelMatchings d1 d2 i)
+    return $ map (\p -> (fst p) ++ (snd p)) pairs
+    
+
+
+finalIsoGood :: LeafDag ret -> LeafDag ret -> [(Sampling, Sampling)] -> IO Bool
+finalIsoGood d1 d2 iso = do
+    putStrLn $ "check for good iso with: " ++ ppMatching iso
+    b <- matchingRespectsConds iso (dagCondLevel d1 (dagRank d1 - 1)) (dagCondLevel d2 (dagRank d2 - 1))
+    runSMT $ do
+        env <- mkEnv (map snd iso)
+        let substenv = substEnv iso
+        b' <- query $ io $ do
+            putStrLn "final check for ret"
+            exprEquiv env (exprSub substenv $ _leafDagRet d1) (_leafDagRet d2)
+        return (b && b')
 
 dagEquiv :: LeafDag ret -> LeafDag ret -> IO Bool
-dagEquiv d1 d2 =
-    if dagCompatible d1 d2 then (do {isos <- runListT $ dagEquiv_ d1 d2 (dagRank d1 - 1); return (not (null isos))}) else return False
+dagEquiv d1 d2 | not (dagCompatible d1 d2) = return False
+ |otherwise = do
+    isos <- dagEquiv_ d1 d2 (dagRank d1 - 1)
+    case (null isos) of
+      True -> return False
+      False -> do
+        putStrLn $ "hi: " ++ concatMap ppMatching isos ++ " len " ++ (show $ length isos)
+        anygood <- mapM (finalIsoGood d1 d2) isos
+        return $ bOr anygood
+
 
 
 leavesEquiv :: [LeafDag ret] -> [LeafDag ret] -> IO Bool

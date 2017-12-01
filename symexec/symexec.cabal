@@ -26,7 +26,7 @@ executable symexec
                        mtl,
                        graph-matchings,
                        fgl,
-                       transformers
+                       transformers,
 
   other-modules: Prot.Lang.Expr, Prot.Lang.Types, Prot.Lang.Command, Prot.Lang.Run, Prot.Lang.Analyze, Prot.Lang.SMT, Prot.Lang.Lang, Prot.Examples.RPS
 
