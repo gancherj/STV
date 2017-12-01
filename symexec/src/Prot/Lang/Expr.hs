@@ -8,6 +8,7 @@ import qualified Data.Parameterized.Context as Ctx
 import Data.Parameterized.Some
 import Data.Parameterized.Classes
 import Data.Parameterized.TraversableFC as F
+import qualified Data.Set as Set
 
 class TypeOf (k :: Type -> *) where
     typeOf :: forall tp. k tp -> TypeRepr tp
@@ -282,34 +283,34 @@ someExprSub emap e1 =
           SomeExp tp (exprSub emap e)
 
 class FreeVar a where
-    freeVars :: a -> [String]
+    freeVars :: a -> Set.Set String
 
 instance FreeVar (Expr tp) where
 
-    freeVars (AtomExpr (Atom x tp)) = [x]
-    freeVars (Expr (IntLit _)) = []
-    freeVars (Expr (IntAdd e1 e2)) = (freeVars e1) ++ (freeVars e2)
-    freeVars (Expr (IntMul e1 e2)) = (freeVars e1) ++ (freeVars e2)
+    freeVars (AtomExpr (Atom x tp)) = Set.singleton x 
+    freeVars (Expr (IntLit _)) = Set.empty
+    freeVars (Expr (IntAdd e1 e2)) = (freeVars e1) `Set.union` (freeVars e2)
+    freeVars (Expr (IntMul e1 e2)) = (freeVars e1) `Set.union` (freeVars e2)
     freeVars (Expr (IntNeg e1 )) = (freeVars e1) 
 
-    freeVars (Expr (BoolLit _)) = []
-    freeVars (Expr (BoolAnd e1 e2)) = (freeVars e1) ++ (freeVars e2)
-    freeVars (Expr (BoolOr e1 e2)) = (freeVars e1) ++ (freeVars e2)
-    freeVars (Expr (BoolXor e1 e2)) = (freeVars e1) ++ (freeVars e2)
+    freeVars (Expr (BoolLit _)) = Set.empty
+    freeVars (Expr (BoolAnd e1 e2)) = (freeVars e1) `Set.union` (freeVars e2)
+    freeVars (Expr (BoolOr e1 e2)) = (freeVars e1) `Set.union` (freeVars e2)
+    freeVars (Expr (BoolXor e1 e2)) = (freeVars e1) `Set.union` (freeVars e2)
     freeVars (Expr (BoolNot e1 )) = (freeVars e1) 
 
-    freeVars (Expr (IntLe e1 e2)) = (freeVars e1) ++ (freeVars e2)
-    freeVars (Expr (IntLt e1 e2)) = (freeVars e1) ++ (freeVars e2)
-    freeVars (Expr (IntGt e1 e2)) = (freeVars e1) ++ (freeVars e2)
-    freeVars (Expr (IntEq e1 e2)) = (freeVars e1) ++ (freeVars e2)
-    freeVars (Expr (IntNeq e1 e2)) = (freeVars e1) ++ (freeVars e2)
+    freeVars (Expr (IntLe e1 e2)) = (freeVars e1) `Set.union` (freeVars e2)
+    freeVars (Expr (IntLt e1 e2)) = (freeVars e1) `Set.union` (freeVars e2)
+    freeVars (Expr (IntGt e1 e2)) = (freeVars e1) `Set.union` (freeVars e2)
+    freeVars (Expr (IntEq e1 e2)) = (freeVars e1) `Set.union` (freeVars e2)
+    freeVars (Expr (IntNeq e1 e2)) = (freeVars e1) `Set.union` (freeVars e2)
 
-    freeVars (Expr (MkTuple _ asgn)) = concat $ toListFC freeVars asgn
+    freeVars (Expr (MkTuple _ asgn)) = foldl (\acc a -> Set.union acc a) Set.empty $ toListFC freeVars asgn
     freeVars (Expr (TupleGet _ tup _ _)) = freeVars tup
-    freeVars (Expr (TupleSet _ tup _ e)) = (freeVars tup) ++ (freeVars e)
+    freeVars (Expr (TupleSet _ tup _ e)) = (freeVars tup) `Set.union` (freeVars e)
 
 instance FreeVar SomeExp where
     freeVars (SomeExp tp e) = freeVars e
 
 instance (FreeVar a) => (FreeVar [a]) where
-    freeVars as = concatMap freeVars as
+    freeVars as = foldl (\acc a -> Set.union acc (freeVars a)) Set.empty as

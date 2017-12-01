@@ -23,7 +23,10 @@ executable symexec
                        containers,
                        sbv,
                        parsec,
-                       mtl
+                       mtl,
+                       graph-matchings,
+                       fgl,
+                       transformers
 
   other-modules: Prot.Lang.Expr, Prot.Lang.Types, Prot.Lang.Command, Prot.Lang.Run, Prot.Lang.Analyze, Prot.Lang.SMT, Prot.Lang.Lang, Prot.Examples.RPS
 

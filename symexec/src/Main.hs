@@ -7,25 +7,21 @@ import Prot.Examples.RPS
 import Data.SBV
 import Data.Parameterized.Context as Ctx
 
-tstCommand :: String -> Prog
-tstCommand xname = do
-    let d = mkDistr "D" (TTupleRepr (Ctx.empty Ctx.%> TIntRepr Ctx.%> TIntRepr)) (\_ _ -> [])
-    xt <- bSampl xname d []
-    case ((getIth (mkSome xt) 0), (getIth (mkSome xt) 1)) of
-      ((SomeExp TIntRepr x), (SomeExp TIntRepr y)) -> do
-        bIte (x |<=| 5) 
-            (do { unSome (mkTuple [mkSome x, mkSome y]) $ \_ e -> bRet e } )
-            (do { unSome (mkTuple [mkSome y, mkSome x]) $ \_ e -> bRet e } )
-      _ -> error "type error"
+tstCommand :: String -> String -> Prog
+tstCommand dname xname = do
+    let d = mkDistr dname TIntRepr (\_ _ -> [])
+    x <- bSampl xname d []
+    bIte (x |<=| 5) 
+        (do { bRet (x + 1) } )
+        (do { bRet (x * 2) } )
 
 
 
 main :: IO ()
 main = do
-    putStrLn $ ppProg (tstCommand "x")
-    putStrLn $ ppProgLeaves (tstCommand "x")
+    putStrLn $ ppProgDag (tstCommand "D" "x")
+    putStrLn $ ppProgDag (tstCommand "D'" "y")
     --putStrLn =<< ppSatProgLeaves (tstCommand "x")
-    putStrLn $ ppProg (rpsIdeal)
-    putStrLn . show =<< runProg (tstCommand "x")
-    --equiv <- progsEquiv (tstCommand "x") (tstCommand "y")
-    --putStrLn equiv
+    --putStrLn . show =<< runProg (tstCommand "x")
+    equiv <- progsEquiv (tstCommand "D" "x") (tstCommand "D'" "y") -- TODO: this is currently failing instead of returning false.
+    putStrLn $ show equiv

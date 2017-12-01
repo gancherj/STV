@@ -84,7 +84,7 @@ progsEquiv p1 p2 = do
                     leaves2_ = map unfoldLets $ commandToLeaves c'
                 leaves1 <- filterM SMT.leafSatisfiable leaves1_
                 leaves2 <- filterM SMT.leafSatisfiable leaves2_
-                SMT.leavesEquiv leaves1 leaves2
+                SMT.leavesEquiv (map mkDag leaves1) (map mkDag leaves2)
             _ -> return False
       (Left err, _) -> fail $ err
       (_, Left err) -> fail $ err
@@ -100,6 +100,12 @@ ppProgLeaves :: Prog -> String
 ppProgLeaves p =
     case (runExcept $ bTrans (buildProg p)) of
       Right (SomeCommand tr cmd) -> ppLeaves $ commandToLeaves cmd
+      _ -> error "compile error"
+
+ppProgDag :: Prog -> String
+ppProgDag p =
+    case (runExcept $ bTrans (buildProg p)) of
+      Right (SomeCommand tr cmd) -> ppLeafDags $ map mkDag (map unfoldLets $ commandToLeaves cmd)
       _ -> error "compile error"
 
 ppSatProgLeaves :: Prog -> IO String

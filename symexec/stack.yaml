@@ -40,7 +40,7 @@ packages:
 - 'deps/parameterized-utils'
 # Dependency packages to be pulled from upstream that are not in the resolver
 # (e.g., acme-missiles-0.3)
-extra-deps: [sbv-7.4, crackNum-1.9, FloatingHex-0.4]
+extra-deps: [sbv-7.4, crackNum-1.9, FloatingHex-0.4, graph-matchings-0.1.0.0]
 
 # Override default flag values for local packages and extra-deps
 flags: {}

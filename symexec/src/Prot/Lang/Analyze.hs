@@ -3,11 +3,13 @@ import Prot.Lang.Command
 import Prot.Lang.Types
 import Prot.Lang.Expr
 import Data.List
+import Data.SBV
 import qualified Data.Set as Set
 import qualified Data.Map.Strict as Map
 
 data Sampling = forall tp. Sampling { _sampdistr :: Distr tp, _sampname :: String, _sampargs :: [SomeExp] }
 
+-- equality is syntactic
 instance Eq Sampling where
     (==) (Sampling distr name args) (Sampling distr' name' args') =
         (compareDistr distr distr') && (name == name') && (args == args')
@@ -70,7 +72,7 @@ instance Show (Leaf rtp) where
 --
 
 rankZeroBy :: Set.Set String -> [Sampling] -> [Sampling]
-rankZeroBy varsSeen = filter (\s -> Set.null (Set.fromList (concatMap freeVars (_sampargs s)) Set.\\ varsSeen))
+rankZeroBy varsSeen = filter (\s -> Set.null (freeVars (_sampargs s) Set.\\ varsSeen))
 
 samplingsToDag :: [Sampling] -> [[Sampling]]
 samplingsToDag ss =
@@ -80,9 +82,9 @@ samplingsToDag ss =
             go ss varsSeen =
                 let thisLvl = rankZeroBy varsSeen ss in
                 case thisLvl of
-                  [] -> [[]]
+                  [] -> []
                   ls -> 
-                      let nextLvls = go (ss \\ thisLvl) (Set.union varsSeen (Set.fromList (concatMap freeVars (map _sampargs thisLvl)))) in
+                      let nextLvls = go (ss \\ thisLvl) (Set.union varsSeen (freeVars (map _sampargs thisLvl))) in
                       (thisLvl : nextLvls)
 
 sampNamesByLevel :: [[Sampling]] -> [Set.Set String]
@@ -101,7 +103,7 @@ sampNamesCumul = sampNamesCumul_ . sampNamesByLevel
 condsCumul :: [Expr TBool] -> [Set.Set String] -> [[Expr TBool]]
 condsCumul es [] = []
 condsCumul es (l:ls) =
-    (filter (\e -> Set.isSubsetOf (Set.fromList $ freeVars e) l) es) : (condsCumul es ls)
+    (filter (\e -> Set.isSubsetOf (freeVars e) l) es) : (condsCumul es ls)
 
 
 
@@ -117,3 +119,29 @@ mkDag (Leaf samps conds ret) =
         where
             dag = samplingsToDag samps
 
+dagCompatible :: LeafDag ret -> LeafDag ret -> Bool
+dagCompatible (LeafDag dag _ _) (LeafDag dag' _ _) | length dag /= length dag' = False
+                                                   | otherwise =
+                                                       bAnd $ map (\(l1,l2) -> length l1 == length l2) (zip dag dag')
+
+dagCondLevel :: LeafDag ret -> Int -> [Expr TBool]
+dagCondLevel d i | i >= length (_leafCondsByLvl d) = error "bad i"
+                 | otherwise = (_leafCondsByLvl d) !! i
+
+dagRank :: LeafDag ret -> Int
+dagRank d = length (_leafSampDag d)
+
+ppLeafDags :: [LeafDag ret] -> String
+ppLeafDags dags = concatMap (\dag -> go dag ++ "\n") dags
+    where
+        go :: LeafDag ret -> String
+        go (LeafDag sampdag conds ret) =
+            "Sampling dag: (length " ++ (show $ length sampdag) ++ ") \n" ++
+            concatMap (\samplings -> concatMap (\sampling -> (ppSampling sampling) ++ ", ") samplings ++ "\n") sampdag ++
+            "Final cond: \n" ++
+                concatMap (\cond -> ppExpr cond ++ "\n") (last conds) ++
+            "Ret: " ++ ppExpr ret
+
+
+
+            

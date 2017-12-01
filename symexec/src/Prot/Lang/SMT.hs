@@ -9,16 +9,120 @@ import Data.Type.Equality
 import Control.Monad
 import qualified Data.Map.Strict as Map
 import qualified Data.Parameterized.Context as Ctx
+import qualified Data.Graph.Inductive.Query.Matchings as G
+import qualified Data.Graph.Inductive.Graph as G
+import qualified Data.Graph.Inductive.PatriciaTree as G
 import Data.Parameterized.Ctx 
 import Data.Parameterized.Classes 
 import Data.Parameterized.Some 
 import Data.Parameterized.TraversableFC as F
 import Data.Parameterized.TraversableF as F
+import Control.Monad.Trans.Class
+import Control.Monad.Trans.List
+
+allPairs :: Int -> [(Int,Int, ())]
+allPairs max = concatMap (\i -> map (\j -> (i,j, ())) [0..max]) [0..max]
+
+perfectMatchingsM :: Monad m => (Int -> Int -> m Bool) -> Int -> m [[(Int,Int)]]
+perfectMatchingsM edge max = do
+    edges <- filterM (\(i,j,_) -> edge i j) (allPairs max) 
+    let (graph :: G.Gr () ()) = G.mkGraph (map (\i -> (i,())) [0..max]) edges 
+    return $ filter (\m -> length m == max) (G.maximalMatchings graph)
+
+hasPerfectMatchingM :: Monad m => (Int -> Int -> m Bool) -> Int -> m Bool
+hasPerfectMatchingM edge max = do
+    edges <- filterM (\(i,j,_) -> edge i j) (allPairs max)
+    let (graph :: G.Gr () ()) = G.mkGraph (map (\i -> (i,())) [0..max]) edges 
+    let m = G.maximumMatching graph
+    return $ length m == max
+
+genPerfectMatchingsByM :: Monad m => (a -> a -> m Bool) -> [a] -> [a] -> m ([[(a,a)]])
+genPerfectMatchingsByM f xs ys | length xs /= length ys = return []
+                              | otherwise =  do
+                                 let edge x y | x >= length xs = fail "bad x"
+                                               | y >= length ys = fail "bad y"
+                                               | otherwise = f (xs !! x) (ys !! y)
+                                 ns <- perfectMatchingsM edge (length xs - 1) 
+                                 return $ map (\l -> map (\(i1,i2) -> (xs !! i1, ys !! i2)) l) ns
+
+hasPerfectMatchingByM :: Monad m => (a -> a -> m Bool) -> [a] -> [a] -> m Bool
+hasPerfectMatchingByM f xs ys | length xs /= length ys = return False
+                              | otherwise = do
+                                  let edge x y | x >= length xs = fail "bad x"
+                                               | y >= length ys = fail "bad y"
+                                               | otherwise = f (xs !! x) (ys !! y)
+                                  hasPerfectMatchingM edge (length xs - 1)
+    
+-- Given two compatible LeafDags and a certain level, return the list of matchings which respect the distributions.
+genDagLevelMatchings :: Monad m => LeafDag ret -> LeafDag ret -> Int -> m [[(Sampling, Sampling)]]
+genDagLevelMatchings (LeafDag dag _ _) (LeafDag dag' _ _) lvl 
+    | lvl >= length dag = fail $ "bad lvl for dag: dag has length " ++ show (length dag) ++ " while lvl is " ++ (show lvl)
+    | lvl >= length dag' = fail "bad lvl for dag'" 
+    | otherwise =
+        genPerfectMatchingsByM samplCompat (dag !! lvl) (dag' !! lvl)
+        where
+            samplCompat :: Monad m => Sampling -> Sampling -> m Bool
+            samplCompat (Sampling d1 _ _) (Sampling d2 _ _) = return $ compareDistr d1 d2  
+
+ppMatching :: [(Sampling, Sampling)] -> String
+ppMatching = concatMap (\p -> "(" ++ ppSampling (fst p) ++ ", " ++ ppSampling (snd p) ++ ") ")
+
+
+substEnv :: [(Sampling, Sampling)] -> Map.Map String SomeExp
+substEnv sampls = Map.fromList $ map (\(Sampling _ x _, Sampling d y _) -> (x, mkSome $ mkAtom y (typeOf d))) sampls
+
+matchingRespectsConds :: [(Sampling, Sampling)] -> [Expr TBool] -> [Expr TBool] -> IO Bool
+matchingRespectsConds matching c1 c2 | length c1 /= length c2 = return False
+  | otherwise = do
+    putStrLn $ "matching: " ++ ppMatching matching
+    runSMT $ do
+        env <- mkEnv (map snd matching)
+        let substenv = substEnv matching
+            b1 = bAnd c1
+            b2 = bAnd c2
+        query $ io $ exprEquiv env (exprSub substenv b1) b2
+
+
+matchingRespectsArgs :: [(Sampling, Sampling)] -> [Expr TBool] -> IO Bool
+matchingRespectsArgs matching phi' =
+    runSMT $ do
+        env <- mkEnv (map snd matching)
+        let substenv = substEnv matching
+        query $ do
+            bools <- io $ forM matching $ \(s1,s2) -> someExprsEquivUnder env phi' (map (someExprSub substenv) (_sampargs s1)) (_sampargs s2)
+            return $ bAnd bools
+
+matchingRespectsArgsConds :: [(Sampling, Sampling)] -> [Expr TBool] -> [Expr TBool] -> IO Bool
+matchingRespectsArgsConds matching phi phi' = do
+    b1 <- matchingRespectsConds matching phi phi'
+    b2 <- matchingRespectsArgs matching phi'
+    return $ b1 && b2
+
+-- assumes dags are of the same shape
+dagEquiv_ :: LeafDag ret -> LeafDag ret -> Int -> ListT IO [[(Sampling, Sampling)]]
+dagEquiv_ d1 d2 0 =
+    lift $ filterM (\m -> matchingRespectsArgsConds m (dagCondLevel d1 0) (dagCondLevel d2 0)) =<< genDagLevelMatchings d1 d2 0
+dagEquiv_ d1 d2 i = do
+    -- sample a distribution from below level
+    alpha <- dagEquiv_ d1 d2 (i - 1)
+    -- get a bijection for this level
+    alphaI <- lift $ filterM (\m -> matchingRespectsArgsConds m (dagCondLevel d1 i) (dagCondLevel d2 i)) =<< genDagLevelMatchings d1 d2 i
+    return $ alpha ++ alphaI
+
+dagEquiv :: LeafDag ret -> LeafDag ret -> IO Bool
+dagEquiv d1 d2 =
+    if dagCompatible d1 d2 then (do {isos <- runListT $ dagEquiv_ d1 d2 (dagRank d1 - 1); return (not (null isos))}) else return False
+
+
+leavesEquiv :: [LeafDag ret] -> [LeafDag ret] -> IO Bool
+leavesEquiv l1 l2 | length l1 /= length l2 = fail "trees have differing numbers of leaves" -- for now, only compare trees with same length.
+                  | otherwise = 
+                      hasPerfectMatchingByM dagEquiv l1 l2
+
+                    
 
 
 
-leavesEquiv :: [Leaf ret] -> [Leaf ret] -> IO Bool
-leavesEquiv = fail "unimp" -- TODO
 
 
 type family SInterp (tp :: Type) :: * where
@@ -26,10 +130,14 @@ type family SInterp (tp :: Type) :: * where
     SInterp TBool = SBool
     SInterp (TTuple ctx) = Ctx.Assignment SInterp' ctx
 
-
 data SInterp' tp = SI { unSI :: SInterp tp }
 
 data SomeSInterp = forall tp. SomeSInterp (TypeRepr tp) (SInterp tp)
+
+instance Show SomeSInterp where
+    show (SomeSInterp TIntRepr x) = show x
+    show (SomeSInterp TBoolRepr y) = show y
+    show _ = "<tuple>"
 
 data ZipInterp tp = ZipInterp (TypeRepr tp) (SInterp tp)
 data ZipZip tp = ZipZip (ZipInterp tp) (ZipInterp tp)
@@ -62,7 +170,7 @@ evalExpr emap (AtomExpr (Atom x tr)) =
           case testEquality tr tr2 of
             Just Refl -> e
             _ -> error "type error"
-      _ -> error "not found"
+      _ -> error $ "not found: " ++ x ++ " in emap " ++ (show emap)
 
 evalExpr emap (Expr (IntLit i)) = literal i
 evalExpr emap (Expr (IntAdd e1 e2)) = (evalExpr emap e1) + (evalExpr emap e2)
@@ -88,9 +196,14 @@ evalExpr emap (Expr (TupleSet cr tup ind e)) =
 
 
 exprEquiv :: Map.Map String SomeSInterp -> Expr tp -> Expr tp -> IO Bool
-exprEquiv env e1 e2 = 
+exprEquiv env e1 e2 = exprEquivUnder env [] e1 e2
+
+exprEquivUnder :: Map.Map String SomeSInterp -> [Expr TBool] -> Expr tp -> Expr tp -> IO Bool
+exprEquivUnder env conds e1 e2 = do
+    putStrLn $ "testing " ++ (ppExpr e1) ++ " ?= " ++ (ppExpr e2) ++ " under " ++ (show env)
     runSMT $ do
         constrain $ (SomeSInterp (typeOf e1) (evalExpr env e1)) ./= (SomeSInterp (typeOf e2) (evalExpr env e2))
+        forM_ conds $ \cond -> constrain $ (evalExpr env cond) .== true
         query $ do
             cs <- checkSat
             case cs of
@@ -98,21 +211,20 @@ exprEquiv env e1 e2 =
               Unsat -> return True
               Unk -> fail "unknown"
 
-
-exprsEquiv :: Map.Map String SomeSInterp -> [Expr tp] -> [Expr tp] -> IO Bool
-exprsEquiv emap l1 l2 =
-    case (length l1 == length l2) of
-      True -> do
-          bools <- mapM (\(p1,p2) -> exprEquiv emap p1 p2) (zip l1 l2)
-          return $ bAnd bools
-      False -> return False
-
-
-someExpEquiv :: Map.Map String SomeSInterp -> SomeExp -> SomeExp -> IO Bool
-someExpEquiv env (SomeExp tr e1) (SomeExp tr' e2) =
-    case (testEquality tr tr') of
-      Just Refl -> exprEquiv env e1 e2
+someExpEquivUnder :: Map.Map String SomeSInterp -> [Expr TBool] -> SomeExp -> SomeExp -> IO Bool
+someExpEquivUnder emap conds (SomeExp t1 e1) (SomeExp t2 e2) =
+    case testEquality t1 t2 of
+      Just Refl -> exprEquivUnder emap conds e1 e2
       Nothing -> return False
+
+someExprsEquivUnder :: Map.Map String SomeSInterp -> [Expr TBool] -> [SomeExp] -> [SomeExp] -> IO Bool
+someExprsEquivUnder emap conds l1 l2 | length l1 /= length l2 = return False
+  | otherwise = do
+      bools <- mapM (\(e1,e2) -> someExpEquivUnder emap conds e1 e2) (zip l1 l2)
+      return $ bAnd bools
+
+
+
 
 -- we do case analysis here to not require SymWord on tp
 atomToSymVar :: Atom tp -> Symbolic (SInterp tp)
@@ -120,7 +232,8 @@ atomToSymVar (Atom s tp) = go s tp
     where go :: String -> TypeRepr tp -> Symbolic (SInterp tp)
           go s TIntRepr = free_
           go s TBoolRepr = free_
-          go s (TTupleRepr ctx) = fail "unimp" -- TODO
+          go s (TTupleRepr ctx) = 
+              fail "unimp"
 
 -- atomToSymVar (Atom s tr) = fail  $ "unknown atom type: " ++ (show tr)
 
@@ -146,5 +259,7 @@ leafSatisfiable (Leaf samps conds ret) = do
               Unsat -> return False
               Unk -> fail "unknown"
 
+-----
+--
+--
 
--- TODO rest
