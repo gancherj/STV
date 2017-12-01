@@ -20,39 +20,55 @@ import Data.Parameterized.TraversableF as F
 import Control.Monad.Trans.Class
 import Data.Functor.Identity
 
-allPairs :: Int -> [(Int,Int, ())]
-allPairs max = concatMap (\i -> map (\j -> (i,j, ())) [0..max]) [0..max]
+allPairs :: Int -> [(Int,Int)]
+allPairs max = concatMap (\i -> map (\j -> (i,j)) [0..max]) [0..max]
 
-perfectMatchingsM :: Monad m => (Int -> Int -> m Bool) -> Int -> m [[(Int,Int)]]
+pairToInt :: (Int, Bool) -> Int
+pairToInt (i,w) = if w then 2 * i else 2 * i + 1
+
+intToPair :: Int -> (Int, Bool)
+intToPair i = if even i then (i `quot` 2, True) else ((i - 1) `quot` 2, False)
+
+perfectMatchingsM :: (Int -> Int -> IO Bool) -> Int -> IO [[(Int,Int)]]
 perfectMatchingsM edge max = do
-    edges <- filterM (\(i,j,_) -> edge i j) (allPairs max) 
-    let (graph :: G.Gr () ()) = G.mkGraph (map (\i -> (i,())) [0..max]) edges 
-    let res = filter (\m -> length m == max) (G.maximalMatchings graph)
+    edges <- filterM (\(i,j) -> edge i j) (allPairs max) -- These edges are of the form (i,j), where i is ith elt on left and j is jth elt on right. There are 2*max vertices total.
+    putStrLn $ "finding edges with edge set: " ++ show edges ++ " and max " ++ show max
+    let verts = (map (\i -> (i, False)) [0..max]) ++ (map (\i -> (i, True)) [0..max])
+        graphVerts = map (\v -> (pairToInt v, ())) verts
+        graphEdges = map (\(i,j) -> (pairToInt (i, False), pairToInt (j, True), ())) edges
+        (graph :: G.Gr () ()) = G.mkGraph graphVerts graphEdges 
+        matchings' = G.maximalMatchings graph
+        matchings = map (\matching -> map (\(i1,i2) -> (fst $ intToPair i1, fst $ intToPair i2)) matching) matchings'
+    let res = filter (\m -> length m == (max + 1)) matchings
+    putStrLn $ "found matchings: " ++ show res
     case res of
       [[]] -> return []
       _ -> return res
 
-hasPerfectMatchingM :: Monad m => (Int -> Int -> m Bool) -> Int -> m Bool
+hasPerfectMatchingM :: (Int -> Int -> IO Bool) -> Int -> IO Bool
 hasPerfectMatchingM edge max = do
-    edges <- filterM (\(i,j,_) -> edge i j) (allPairs max)
-    let (graph :: G.Gr () ()) = G.mkGraph (map (\i -> (i,())) [0..max]) edges 
-    let m = G.maximumMatching graph
-    return $ length m == max
+    edges <- filterM (\(i,j) -> edge i j) (allPairs max) -- These edges are of the form (i,j), where i is ith elt on left and j is jth elt on right. There are 2*max vertices total.
+    putStrLn $ "finding edges with edge set: " ++ show edges ++ " and max " ++ show max
+    let verts = (map (\i -> (i, False)) [0..max]) ++ (map (\i -> (i, True)) [0..max])
+        graphVerts = map (\v -> (pairToInt v, ())) verts
+        graphEdges = map (\(i,j) -> (pairToInt (i, False), pairToInt (j, True), ())) edges
+        (graph :: G.Gr () ()) = G.mkGraph graphVerts graphEdges 
+        matching' = G.maximumMatching graph
+        matching = map (\(i1,i2) -> (fst $ intToPair i1, fst $ intToPair i2)) matching'
+    putStrLn $ "matching obtained is: " ++ show matching
+    return $ (length matching) == (max + 1)
+    
 
-genPerfectMatchingsByM :: Monad m => (a -> a -> m Bool) -> [a] -> [a] -> m ([[(a,a)]])
+genPerfectMatchingsByM :: (a -> a -> IO Bool) -> [a] -> [a] -> IO ([[(a,a)]])
 genPerfectMatchingsByM f xs ys | length xs /= length ys = return []
                               | otherwise =  do
                                  let edge x y | x >= length xs = fail "bad x"
-                                               | y >= length ys = fail "bad y"
-                                               | otherwise = f (xs !! x) (ys !! y)
+                                              | y >= length ys = fail "bad y"
+                                              | otherwise = f (xs !! x) (ys !! y)
                                  ns <- perfectMatchingsM edge (length xs - 1) 
                                  return $ map (\l -> map (\(i1,i2) -> (xs !! i1, ys !! i2)) l) ns
 
-genPerfectMatchingsBy :: (a -> a -> Bool) -> [a] -> [a] -> [[(a,a)]]
-genPerfectMatchingsBy f xs ys =
-    runIdentity $ genPerfectMatchingsByM (\x y -> return $ f x y) xs ys
-
-hasPerfectMatchingByM :: Monad m => (a -> a -> m Bool) -> [a] -> [a] -> m Bool
+hasPerfectMatchingByM :: (a -> a -> IO Bool) -> [a] -> [a] -> IO Bool
 hasPerfectMatchingByM f xs ys | length xs /= length ys = return False
                               | otherwise = do
                                   let edge x y | x >= length xs = fail "bad x"
@@ -61,15 +77,18 @@ hasPerfectMatchingByM f xs ys | length xs /= length ys = return False
                                   hasPerfectMatchingM edge (length xs - 1)
     
 -- Given two compatible LeafDags and a certain level, return the list of matchings which respect the distributions.
-genDagLevelMatchings :: LeafDag ret -> LeafDag ret -> Int -> [[(Sampling, Sampling)]]
+genDagLevelMatchings :: LeafDag ret -> LeafDag ret -> Int -> IO [[(Sampling, Sampling)]]
 genDagLevelMatchings (LeafDag dag _ _) (LeafDag dag' _ _) lvl 
     | lvl >= length dag = error $ "bad lvl for dag: dag has length " ++ show (length dag) ++ " while lvl is " ++ (show lvl)
     | lvl >= length dag' = error "bad lvl for dag'" 
-    | otherwise =
-        genPerfectMatchingsBy samplCompat (dag !! lvl) (dag' !! lvl)
+    | otherwise = do
+        putStrLn $ "finding matching on sampl dags: " ++ show (map ppSampling (dag !! lvl)) ++ " and " ++ show (map ppSampling (dag' !! lvl))
+        matchings <- genPerfectMatchingsByM samplCompat (dag !! lvl) (dag' !! lvl)
+        putStrLn $ "found " ++ show (length matchings) ++ " matchings: " ++ show (map ppMatching matchings)
+        return matchings
         where
-            samplCompat :: Sampling -> Sampling -> Bool
-            samplCompat (Sampling d1 _ _) (Sampling d2 _ _) = compareDistr d1 d2  
+            samplCompat :: Sampling -> Sampling -> IO Bool
+            samplCompat (Sampling d1 _ _) (Sampling d2 _ _) = return $ compareDistr d1 d2  
 
 ppMatching :: [(Sampling, Sampling)] -> String
 ppMatching = concatMap (\p -> "(" ++ ppSampling (fst p) ++ ", " ++ ppSampling (snd p) ++ ") ")
@@ -81,23 +100,21 @@ substEnv sampls = Map.fromList $ map (\(Sampling _ x _, Sampling d y _) -> (x, m
 matchingRespectsConds :: [(Sampling, Sampling)] -> [Expr TBool] -> [Expr TBool] -> IO Bool
 matchingRespectsConds matching c1 c2 | length c1 /= length c2 = return False
   | otherwise = do
-    putStrLn $ "matching: " ++ ppMatching matching
-    runSMT $ do
-        env <- mkEnv (map snd matching)
-        let substenv = substEnv matching
-            b1 = bAnd c1
-            b2 = bAnd c2
-        query $ io $ exprEquiv env (exprSub substenv b1) b2
+    putStrLn $ "matching respects conds: " ++ ppMatching matching
+    let env = (map snd matching)
+    let substenv = substEnv matching
+        b1 = bAnd c1
+        b2 = bAnd c2
+    exprEquiv env (exprSub substenv b1) b2
 
 
 matchingRespectsArgs :: [(Sampling, Sampling)] -> [Expr TBool] -> IO Bool
-matchingRespectsArgs matching phi' =
-    runSMT $ do
-        env <- mkEnv (map snd matching)
-        let substenv = substEnv matching
-        query $ do
-            bools <- io $ forM matching $ \(s1,s2) -> someExprsEquivUnder env phi' (map (someExprSub substenv) (_sampargs s1)) (_sampargs s2)
-            return $ bAnd bools
+matchingRespectsArgs matching phi' = do
+    putStrLn $ "matching respects args: " ++ ppMatching matching
+    let env = (map snd matching)
+    let substenv = substEnv matching
+    bools <- forM matching $ \(s1,s2) -> someExprsEquivUnder env phi' (map (someExprSub substenv) (_sampargs s1)) (_sampargs s2)
+    return $ bAnd bools
 
 matchingRespectsArgsConds :: [(Sampling, Sampling)] -> [Expr TBool] -> [Expr TBool] -> IO Bool
 matchingRespectsArgsConds matching phi phi' = do
@@ -122,30 +139,32 @@ compatPairsM f xs ys = do
 dagEquiv_ :: LeafDag ret -> LeafDag ret -> Int ->  IO [[(Sampling, Sampling)]]
 dagEquiv_ d1 d2 0 = do
     putStrLn "stage 0"
-    filterM (\m -> matchingRespectsArgs m []) (genDagLevelMatchings d1 d2 0) -- Check if initial samplings are equivalent
+    initmatchings <- genDagLevelMatchings d1 d2 0
+    putStrLn $ "initial matchings: " ++ (show $ map ppMatching initmatchings)
+    filterM (\m -> matchingRespectsArgs m []) initmatchings -- Check if initial samplings are equivalent
 
 dagEquiv_ d1 d2 i = do
     putStrLn $ "stage " ++ (show i)
     -- sample a distribution from below level
     alphas <- dagEquiv_ d1 d2 (i - 1)
     -- get a bijection for this level, respecting the previous constraints.
+    newlevelmatching <- genDagLevelMatchings d1 d2 i
     pairs <- compatPairsM (\alpha alphaI ->
-        matchingRespectsArgsConds (alpha ++ alphaI) (dagCondLevel d1 (i - 1)) (dagCondLevel d2 (i - 1))) alphas (genDagLevelMatchings d1 d2 i)
-    return $ map (\p -> (fst p) ++ (snd p)) pairs
-    
+        matchingRespectsArgsConds (alpha ++ alphaI) (dagCondLevel d1 (i - 1)) (dagCondLevel d2 (i - 1))) alphas newlevelmatching
+    let news = map (\p -> (fst p) ++ (snd p)) pairs
+    putStrLn $ "matchings found: " ++ (show $ map ppMatching news)
+    return news
 
 
 finalIsoGood :: LeafDag ret -> LeafDag ret -> [(Sampling, Sampling)] -> IO Bool
 finalIsoGood d1 d2 iso = do
     putStrLn $ "check for good iso with: " ++ ppMatching iso
     b <- matchingRespectsConds iso (dagCondLevel d1 (dagRank d1 - 1)) (dagCondLevel d2 (dagRank d2 - 1))
-    runSMT $ do
-        env <- mkEnv (map snd iso)
-        let substenv = substEnv iso
-        b' <- query $ io $ do
-            putStrLn "final check for ret"
-            exprEquiv env (exprSub substenv $ _leafDagRet d1) (_leafDagRet d2)
-        return (b && b')
+    let env = (map snd iso)
+    let substenv = substEnv iso
+    putStrLn "final check for ret"
+    b' <- exprEquiv env (exprSub substenv $ _leafDagRet d1) (_leafDagRet d2)
+    return (b && b')
 
 dagEquiv :: LeafDag ret -> LeafDag ret -> IO Bool
 dagEquiv d1 d2 | not (dagCompatible d1 d2) = return False
@@ -154,7 +173,6 @@ dagEquiv d1 d2 | not (dagCompatible d1 d2) = return False
     case (null isos) of
       True -> return False
       False -> do
-        putStrLn $ "hi: " ++ concatMap ppMatching isos ++ " len " ++ (show $ length isos)
         anygood <- mapM (finalIsoGood d1 d2) isos
         return $ bOr anygood
 
@@ -241,13 +259,14 @@ evalExpr emap (Expr (TupleSet cr tup ind e)) =
     Ctx.update ind (SI $ evalExpr emap e) (evalExpr emap tup)
 
 
-exprEquiv :: Map.Map String SomeSInterp -> Expr tp -> Expr tp -> IO Bool
+exprEquiv :: [Sampling] -> Expr tp -> Expr tp -> IO Bool
 exprEquiv env e1 e2 = exprEquivUnder env [] e1 e2
 
-exprEquivUnder :: Map.Map String SomeSInterp -> [Expr TBool] -> Expr tp -> Expr tp -> IO Bool
-exprEquivUnder env conds e1 e2 = do
-    putStrLn $ "testing " ++ (ppExpr e1) ++ " ?= " ++ (ppExpr e2) ++ " under " ++ (show env)
+exprEquivUnder :: [Sampling] -> [Expr TBool] -> Expr tp -> Expr tp -> IO Bool
+exprEquivUnder samps conds e1 e2 = do
+    putStrLn $ "testing " ++ (ppExpr e1) ++ " ?= " ++ (ppExpr e2) ++ " under " ++ (show $ map ppSampling samps)
     runSMT $ do
+        env <- mkEnv samps
         constrain $ (SomeSInterp (typeOf e1) (evalExpr env e1)) ./= (SomeSInterp (typeOf e2) (evalExpr env e2))
         forM_ conds $ \cond -> constrain $ (evalExpr env cond) .== true
         query $ do
@@ -257,13 +276,13 @@ exprEquivUnder env conds e1 e2 = do
               Unsat -> return True
               Unk -> fail "unknown"
 
-someExpEquivUnder :: Map.Map String SomeSInterp -> [Expr TBool] -> SomeExp -> SomeExp -> IO Bool
+someExpEquivUnder :: [Sampling] -> [Expr TBool] -> SomeExp -> SomeExp -> IO Bool
 someExpEquivUnder emap conds (SomeExp t1 e1) (SomeExp t2 e2) =
     case testEquality t1 t2 of
       Just Refl -> exprEquivUnder emap conds e1 e2
       Nothing -> return False
 
-someExprsEquivUnder :: Map.Map String SomeSInterp -> [Expr TBool] -> [SomeExp] -> [SomeExp] -> IO Bool
+someExprsEquivUnder :: [Sampling] -> [Expr TBool] -> [SomeExp] -> [SomeExp] -> IO Bool
 someExprsEquivUnder emap conds l1 l2 | length l1 /= length l2 = return False
   | otherwise = do
       bools <- mapM (\(e1,e2) -> someExpEquivUnder emap conds e1 e2) (zip l1 l2)
@@ -292,6 +311,7 @@ mkEnv samps = do
         sv <- atomToSymVar $ Atom x tr
         return $ (x, SomeSInterp tr sv)
     return $ Map.fromList samplpairs
+
 
 leafSatisfiable :: Leaf ret -> IO Bool
 leafSatisfiable (Leaf samps conds ret) = do

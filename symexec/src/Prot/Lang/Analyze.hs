@@ -136,7 +136,7 @@ ppLeafDags dags = concatMap (\dag -> go dag ++ "\n") dags
     where
         go :: LeafDag ret -> String
         go (LeafDag sampdag conds ret) =
-            "Sampling dag: (length " ++ (show $ length sampdag) ++ ") \n" ++
+            "Sampling dag: (depth " ++ (show $ length sampdag) ++ ") \n" ++
             concatMap (\samplings -> concatMap (\sampling -> (ppSampling sampling) ++ ", ") samplings ++ "\n") sampdag ++
             "Final cond: \n" ++
                 concatMap (\cond -> ppExpr cond ++ "\n") (last conds) ++

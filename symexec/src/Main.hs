@@ -3,7 +3,7 @@ import Prot.Lang.Lang
 import Prot.Lang.Types
 import Prot.Lang.Expr
 import Prot.Lang.Command
-import Prot.Examples.RPS
+import Prot.Examples.Rotate
 import Data.SBV
 import Data.Parameterized.Context as Ctx
 
@@ -19,9 +19,13 @@ tstCommand dname xname = do
 
 main :: IO ()
 main = do
-    putStrLn $ ppProgDag (tstCommand "D" "x")
-    putStrLn $ ppProgDag (tstCommand "D'" "y")
+    --putStrLn $ ppProgDag (tstCommand "D" "x")
+    --putStrLn $ ppProgDag (tstCommand "D'" "y")
+    putStrLn "A:"
+    putStrLn $ ppProgDag rotateA
+    putStrLn "B:"
+    putStrLn $ ppProgDag rotateB
     --putStrLn =<< ppSatProgLeaves (tstCommand "x")
     --putStrLn . show =<< runProg (tstCommand "x")
-    equiv <- progsEquiv (tstCommand "D" "x") (tstCommand "D'" "y") -- TODO: this is currently failing instead of returning false.
-    putStrLn $ show equiv
+    --putStrLn . show =<< progsEquiv (tstCommand "D" "x") (tstCommand "D'" "y") 
+    putStrLn . show =<< progsEquiv rotateA rotateB
