@@ -15,7 +15,7 @@ instance Eq Sampling where
         (compareDistr distr distr') && (name == name') && (args == args')
 
 ppSampling :: Sampling -> String
-ppSampling (Sampling d x es) = x ++ " <- " ++ (ppDistr d) ++ (concatMap ppSomeExp es) 
+ppSampling (Sampling d x es) = x ++ " <- " ++ (ppDistr d) ++ " " ++ (concatMap (\e -> "(" ++ ppSomeExp e ++ ")") es) 
 
 data LeafLet ret where
     LeafLet :: { 
@@ -71,21 +71,23 @@ instance Show (Leaf rtp) where
 --
 --
 
-rankZeroBy :: Set.Set String -> [Sampling] -> [Sampling]
-rankZeroBy varsSeen = filter (\s -> Set.null (freeVars (_sampargs s) Set.\\ varsSeen))
+
+
+freeSampsBy :: Set.Set String -> [Sampling] -> [Sampling]
+freeSampsBy varsSeen = filter (\s -> Set.null (freeVars (_sampargs s) Set.\\ varsSeen))
 
 samplingsToDag :: [Sampling] -> [[Sampling]]
 samplingsToDag ss =
-    go ss Set.empty
+    go Set.empty ss
         where
-            go :: [Sampling] -> Set.Set String -> [[Sampling]]
-            go ss varsSeen =
-                let thisLvl = rankZeroBy varsSeen ss in
-                case thisLvl of
-                  [] -> []
+            go :: Set.Set String -> [Sampling] -> [[Sampling]]
+            go varsSeen ss =
+                let freeSamps = freeSampsBy varsSeen ss in
+                case freeSamps of
+                  [] -> if null ss then [] else error $ "bad: still have sampls " ++ (show (map ppSampling ss)) ++ " with varsSeen " ++ show varsSeen
                   ls -> 
-                      let nextLvls = go (ss \\ thisLvl) (Set.union varsSeen (freeVars (map _sampargs thisLvl))) in
-                      (thisLvl : nextLvls)
+                      let nextLvls = go (Set.union varsSeen (Set.fromList (map _sampname freeSamps))) (ss \\ freeSamps) in
+                      (freeSamps : nextLvls)
 
 sampNamesByLevel :: [[Sampling]] -> [Set.Set String]
 sampNamesByLevel dag = map (\lvl -> Set.fromList (map _sampname lvl)) dag

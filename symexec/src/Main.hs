@@ -21,11 +21,12 @@ main :: IO ()
 main = do
     --putStrLn $ ppProgDag (tstCommand "D" "x")
     --putStrLn $ ppProgDag (tstCommand "D'" "y")
+    putStrLn =<< ppSatProgLeaves rotateA
+    putStrLn =<< ppSatProgLeaves rotateB
     putStrLn "A:"
     putStrLn $ ppProgDag rotateA
     putStrLn "B:"
     putStrLn $ ppProgDag rotateB
-    --putStrLn =<< ppSatProgLeaves (tstCommand "x")
     --putStrLn . show =<< runProg (tstCommand "x")
     --putStrLn . show =<< progsEquiv (tstCommand "D" "x") (tstCommand "D'" "y") 
     putStrLn . show =<< progsEquiv rotateA rotateB

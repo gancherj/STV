@@ -305,7 +305,7 @@ instance FreeVar (Expr tp) where
     freeVars (Expr (IntEq e1 e2)) = (freeVars e1) `Set.union` (freeVars e2)
     freeVars (Expr (IntNeq e1 e2)) = (freeVars e1) `Set.union` (freeVars e2)
 
-    freeVars (Expr (MkTuple _ asgn)) = foldl (\acc a -> Set.union acc a) Set.empty $ toListFC freeVars asgn
+    freeVars (Expr (MkTuple _ asgn)) = Set.unions $ toListFC freeVars asgn
     freeVars (Expr (TupleGet _ tup _ _)) = freeVars tup
     freeVars (Expr (TupleSet _ tup _ e)) = (freeVars tup) `Set.union` (freeVars e)
 
@@ -313,4 +313,4 @@ instance FreeVar SomeExp where
     freeVars (SomeExp tp e) = freeVars e
 
 instance (FreeVar a) => (FreeVar [a]) where
-    freeVars as = foldl (\acc a -> Set.union acc (freeVars a)) Set.empty as
+    freeVars as = Set.unions $ map freeVars as
