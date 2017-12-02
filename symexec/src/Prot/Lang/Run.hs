@@ -17,6 +17,7 @@ type family TInterp (tp :: Type) :: * where
     TInterp TInt = Integer
     TInterp TBool = Bool
     TInterp (TTuple ctx) = Ctx.Assignment TInterp' ctx
+    TInterp (TEnum t) = TypeableValue t
 
 
 newtype TInterp' tp = TI {unTI :: TInterp tp}
@@ -27,6 +28,7 @@ instance Show SomeInterp where
     show (SomeInterp TIntRepr ti) = (show ti)
     show (SomeInterp TBoolRepr ti) = (show ti)
     show (SomeInterp (TTupleRepr ctx) ti) = showTupleInterp ctx ti
+    show (SomeInterp (TEnumRepr tp) ti) = (show ti)
 
 data PPInterp tp = PPInterp (TypeRepr tp) (TInterp tp)
 
@@ -37,6 +39,7 @@ showTupleInterp ctx asgn =
             case tr of
               TIntRepr -> show val
               TBoolRepr -> show val
+              TEnumRepr tp -> show val
               TTupleRepr ictx -> showTupleInterp ictx val
               ) z in
     "[" ++ (concatMap (\s -> s ++ ", ") valstrs) ++ "]"
@@ -73,6 +76,9 @@ evalExpr emap (Expr (TupleGet cr tup ind tp)) = unTI $ (evalExpr emap tup) Ctx.!
 evalExpr emap (Expr (TupleSet cr tup ind e)) = 
     Ctx.update ind (TI $ evalExpr emap e) (evalExpr emap tup)
 
+evalExpr emap (Expr (EnumLit _)) = error "enum dont care"
+evalExpr emap (Expr (EnumEq _ _ _)) = error "enum dont care"
+
 
 runQuery :: String -> String -> TypeRepr tp -> IO (TInterp tp)
 runQuery x dn TIntRepr = do
@@ -88,6 +94,7 @@ runQuery x dn (TTupleRepr ctxrepr) = do
         e <- runQuery (x ++ "[" ++ (show (Ctx.indexVal i)) ++ "]") dn repr
         return $ TI e) ctxrepr
     return $ asgn
+runQuery x dn (TEnumRepr t) = fail "enum query"
 
 
 runCommand_ :: Map.Map String (SomeInterp) -> Command tp -> IO (TInterp tp)

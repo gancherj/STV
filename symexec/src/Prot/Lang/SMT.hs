@@ -193,6 +193,7 @@ type family SInterp (tp :: Type) :: * where
     SInterp TInt = SInteger
     SInterp TBool = SBool
     SInterp (TTuple ctx) = Ctx.Assignment SInterp' ctx
+    SInterp (TEnum t) = SBV t
 
 data SInterp' tp = SI { unSI :: SInterp tp }
 
@@ -221,6 +222,7 @@ instance EqSymbolic SomeSInterp where
                             case tp1 of
                               TIntRepr -> si1 .== si2
                               TBoolRepr -> si1 .== si2
+                              TEnumRepr t -> si1 .== si2
                               TTupleRepr ictx -> (SomeSInterp tp1 si1) .== (SomeSInterp tp1 si2) 
                         Nothing -> false)  z in
                   bAnd sbools
@@ -257,6 +259,9 @@ evalExpr emap (Expr (MkTuple cr asgn)) = F.fmapFC (SI . (evalExpr emap)) asgn
 evalExpr emap (Expr (TupleGet _ tup ind tp)) = unSI $ (evalExpr emap tup) Ctx.! ind
 evalExpr emap (Expr (TupleSet cr tup ind e)) = 
     Ctx.update ind (SI $ evalExpr emap e) (evalExpr emap tup)
+
+evalExpr emap (Expr (EnumLit (TypeableValue a))) = literal a
+evalExpr emap (Expr (EnumEq (TypeableType) e1 e2)) = (evalExpr emap e1) .== (evalExpr emap e2)
 
 
 exprEquiv :: [Sampling] -> Expr tp -> Expr tp -> IO Bool

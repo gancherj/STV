@@ -28,6 +28,6 @@ executable symexec
                        fgl,
                        transformers
 
-  other-modules: Prot.Lang.Expr, Prot.Lang.Types, Prot.Lang.Command, Prot.Lang.Run, Prot.Lang.Analyze, Prot.Lang.SMT, Prot.Lang.Lang, Prot.Examples.RPS
+  other-modules: Prot.Lang.Expr, Prot.Lang.Types, Prot.Lang.Command, Prot.Lang.Run, Prot.Lang.Analyze, Prot.Lang.SMT, Prot.Lang.Lang, Prot.Examples.RPS, Prot.Examples.Rotate
 
   default-extensions: FlexibleInstances, GADTs, GeneralizedNewtypeDeriving, KindSignatures, TemplateHaskell, TypeOperators, TypeSynonymInstances, MultiParamTypeClasses, FunctionalDependencies, ScopedTypeVariables, UndecidableInstances, ConstraintKinds, DataKinds, PolyKinds, EmptyDataDecls, TypeFamilies, RankNTypes, ExistentialQuantification, FlexibleContexts

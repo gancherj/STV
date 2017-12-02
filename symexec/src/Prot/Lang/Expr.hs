@@ -35,7 +35,8 @@ data App (f :: Type -> *) (tp :: Type) where
     TupleGet :: !(CtxRepr ctx) -> !(f (TTuple ctx)) -> !(Ctx.Index ctx tp) -> !(TypeRepr tp) -> App f tp
     TupleSet :: !(CtxRepr ctx) -> !(f (TTuple ctx)) -> !(Ctx.Index ctx tp) -> !(f tp) -> App f (TTuple ctx)
 
-
+    EnumLit :: !(TypeableValue a) -> App f (TEnum a)
+    EnumEq :: !(TypeableType a) -> !(f (TEnum a)) -> !(f (TEnum a)) -> App f TBool
 
 data Expr tp = Expr !(App Expr tp) | AtomExpr !(Atom tp)
 
@@ -76,6 +77,8 @@ instance TypeOf Expr where
     typeOf (Expr (MkTuple cr asgn)) = TTupleRepr cr
     typeOf (Expr (TupleGet _ cr ind tp)) = tp
     typeOf (Expr (TupleSet cr _ _ _)) = TTupleRepr cr
+    typeOf (Expr (EnumLit x )) = TEnumRepr $ typeableTypeOfValue x 
+    typeOf (Expr (EnumEq _ x _)) = TBoolRepr
 
 
 
@@ -132,6 +135,9 @@ ppExpr (Expr (MkTuple cr asgn)) = show asgn
 ppExpr (Expr (TupleGet _ ag ind tp)) = (ppExpr ag) ++ "[" ++ (show ind) ++ "]"
 ppExpr (Expr (TupleSet cr ag ind val)) = (ppExpr ag) ++ "{" ++ (show ind) ++ " -> " ++ (ppExpr val) ++ "}"
 
+ppExpr (Expr (EnumLit i)) = show i
+ppExpr (Expr (EnumEq _ x y)) = (ppExpr x) ++ " == " ++ (ppExpr y)
+
 --- utility functions
 
 exprsToCtx :: [SomeExp] -> (forall ctx. CtxRepr ctx -> Ctx.Assignment Expr ctx -> a) -> a
@@ -144,6 +150,14 @@ exprsToCtx es =
 mkTuple :: [SomeExp] -> SomeExp
 mkTuple es = exprsToCtx es $ \ctx asgn ->
     SomeExp (TTupleRepr ctx) (Expr (MkTuple ctx asgn))
+
+mkTupleRepr :: [Some TypeRepr] -> Some TypeRepr
+mkTupleRepr ts =
+    go (reverse ts) Ctx.empty
+        where go :: [Some TypeRepr] -> CtxRepr ctx -> Some TypeRepr
+              go [] ctx = Some (TTupleRepr ctx)
+              go ((Some tr):ts) ctx = go ts (ctx Ctx.%> tr)
+
 
 getIth :: SomeExp -> Int -> SomeExp
 getIth (SomeExp (TTupleRepr ctx) e) i 
@@ -275,6 +289,8 @@ exprSub emap e = runFor (Map.size emap) (go emap) e
           go emap (Expr (MkTuple cr asgn)) = Expr (MkTuple cr (F.fmapFC (go emap) asgn))
           go emap (Expr (TupleGet ctx tup ind etp)) = Expr (TupleGet ctx (go emap tup) ind etp)
           go emap (Expr (TupleSet ctx tup ind e)) = Expr (TupleSet ctx (go emap tup) ind (go emap e))
+          go emap (Expr (EnumLit i)) = Expr (EnumLit i)
+          go emap (Expr (EnumEq t a b)) = Expr (EnumEq t (go emap a) (go emap b))
 
 someExprSub :: Map.Map String SomeExp -> SomeExp -> SomeExp
 someExprSub emap e1 = 
@@ -308,6 +324,9 @@ instance FreeVar (Expr tp) where
     freeVars (Expr (MkTuple _ asgn)) = Set.unions $ toListFC freeVars asgn
     freeVars (Expr (TupleGet _ tup _ _)) = freeVars tup
     freeVars (Expr (TupleSet _ tup _ e)) = (freeVars tup) `Set.union` (freeVars e)
+
+    freeVars (Expr (EnumLit _)) = Set.empty
+    freeVars (Expr (EnumEq _ a b)) = (freeVars a) `Set.union` (freeVars b)
 
 instance FreeVar SomeExp where
     freeVars (SomeExp tp e) = freeVars e
