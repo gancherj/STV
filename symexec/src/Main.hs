@@ -19,7 +19,16 @@ tstTuple xname = do
             (do { unSome (mkTuple [mkSome y, mkSome x]) $ \_ e -> bRet e } )
       _ -> error "type error"
 
+data MyEnum = A | B
+mkSymbolicEnumeration ''MyEnum
 
+tstEnum :: Prog
+tstEnum = do
+    let d = mkDistr "D" (TEnumRepr (TypeableType :: TypeableType MyEnum)) (\_ _ -> [])
+    x <- bSampl "x" d []
+    bIte (x |===| (enumLit A))
+     (bRet (3 :: Expr TInt))
+     (bRet (4 :: Expr TInt))
 
 
 
@@ -27,14 +36,16 @@ main :: IO ()
 main = do
     --putStrLn $ ppProgDag (tstCommand "D" "x")
     --putStrLn $ ppProgDag (tstCommand "D'" "y")
-    putStrLn =<< ppSatProgLeaves rotateA
-    putStrLn =<< ppSatProgLeaves rotateB
-    putStrLn "A:"
-    putStrLn $ ppProgDag rotateA
-    putStrLn "B:"
-    putStrLn $ ppProgDag rotateB
+    --putStrLn =<< ppSatProgLeaves rotateA
+    --putStrLn =<< ppSatProgLeaves rotateB
+    putStrLn =<< ppSatProgLeaves tstEnum
+    --putStrLn "A:"
+    --putStrLn $ ppProgDag rotateA
+    --putStrLn "B:"
+    --putStrLn $ ppProgDag rotateB
     --putStrLn . show =<< runProg (tstCommand "x")
     --putStrLn . show =<< progsEquiv (tstCommand "D" "x") (tstCommand "D'" "y") 
-    putStrLn . show =<< progsEquiv (tstTuple "x") (tstTuple "y")
-    putStrLn . show =<< progsEquiv rotateA rotateB
+    --putStrLn . show =<< progsEquiv (tstTuple "x") (tstTuple "y")
+    --putStrLn . show =<< progsEquiv rotateA rotateB
+    putStrLn . show =<< progsEquiv tstEnum tstEnum
 

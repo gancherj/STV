@@ -9,10 +9,13 @@ import Data.SBV
 import Data.Data
 
 data TypeableType (a :: *) where
-    TypeableType :: (Typeable a, Eq a, Ord a, Show a, Read a, Data a, SymWord a, HasKind a, SatModel a, EqSymbolic a) => TypeableType a
+    TypeableType :: (Typeable a, Eq a, Ord a, Show a, Read a, Data a, SymWord a, HasKind a, SatModel a) => TypeableType a
+
+instance TestEquality TypeableType where
+    testEquality TypeableType TypeableType = eqT
 
 data TypeableValue (a :: *) where
-    TypeableValue :: (Typeable a, Eq a, Ord a, Show a, Read a, Data a, SymWord a, HasKind a, SatModel a, EqSymbolic a) => a -> TypeableValue a
+    TypeableValue :: (Typeable a, Eq a, Ord a, Show a, Read a, Data a, SymWord a, HasKind a, SatModel a) => a -> TypeableValue a
 
 typeableTypeOfValue :: TypeableValue a -> TypeableType a
 typeableTypeOfValue (TypeableValue a) = TypeableType
@@ -72,7 +75,7 @@ type KnownCtx f = KnownRepr (Ctx.Assignment f)
 instance KnownCtx TypeRepr ctx => KnownRepr TypeRepr (TTuple ctx) where
     knownRepr = TTupleRepr knownRepr
 
-instance (Eq a, Ord a, Typeable a, Show a, Read a, Data a, SymWord a, HasKind a, SatModel a, EqSymbolic a) => KnownRepr TypeRepr (TEnum a) where
+instance (Eq a, Ord a, Typeable a, Show a, Read a, Data a, SymWord a, HasKind a, SatModel a) => KnownRepr TypeRepr (TEnum a) where
     knownRepr = TEnumRepr TypeableType
 
 instance TestEquality TypeRepr where
@@ -82,7 +85,10 @@ instance TestEquality TypeRepr where
         case (testEquality t t') of
           Just Refl -> Just Refl
           Nothing -> Nothing
-    testEquality _ _ = Nothing
+    testEquality (TEnumRepr t) (TEnumRepr t') = 
+        case (testEquality t t') of
+          Just Refl -> Just Refl
+          Nothing -> Nothing
 
 
 instance TestEquality BaseTypeRepr where

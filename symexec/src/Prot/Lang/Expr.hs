@@ -3,6 +3,9 @@ module Prot.Lang.Expr where
 import Prot.Lang.Types
 import Data.SBV
 import Data.Type.Equality
+import Data.Typeable
+import Data.Type.Equality
+import qualified Data.Data as Data
 import qualified Data.Map.Strict as Map
 import qualified Data.Parameterized.Context as Ctx
 import Data.Parameterized.Some
@@ -105,7 +108,7 @@ ppSomeExp :: SomeExp -> String
 ppSomeExp (SomeExp _ e) = ppExpr e
 
 mkSome :: Expr tp -> SomeExp
-mkSome e = SomeExp (typeOf e) e
+mkSome e = SomeExp (Prot.Lang.Expr.typeOf e) e
 
 unSome :: SomeExp -> (forall tp. TypeRepr tp -> Expr tp -> a) -> a
 unSome e k =
@@ -204,6 +207,11 @@ e1 |>| e2 = Expr (IntGt e1 e2)
 (|<=|) :: Expr TInt -> Expr TInt -> Expr TBool
 e1 |<=| e2 = Expr (IntLe e1 e2)
 
+(|===|) :: (Typeable a, Eq a, Ord a, Show a, Read a, Data.Data a, SymWord a, HasKind a, SatModel a) => Expr (TEnum a) -> Expr (TEnum a) -> Expr TBool
+e1 |===| e2 = Expr (EnumEq (TypeableType) e1 e2)
+
+enumLit :: (Typeable a, Eq a, Ord a, Show a, Read a, Data.Data a, SymWord a, HasKind a, SatModel a) => a -> Expr (TEnum a)
+enumLit a = Expr (EnumLit (TypeableValue a))
 
 instance Boolean (Expr TBool) where
     true = Expr (BoolLit True)

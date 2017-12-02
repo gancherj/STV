@@ -40,7 +40,7 @@ perfectMatchingsM edge max = do
         matchings' = G.maximalMatchings graph
         matchings = map (\matching -> map (\(i1,i2) -> (fst $ intToPair i1, fst $ intToPair i2)) matching) matchings'
     let res = filter (\m -> length m == (max + 1)) matchings
-    --putStrLn $ "found matchings: " ++ show res
+    putStrLn $ "found matchings: " ++ show res
     case res of
       [[]] -> return []
       _ -> return res
@@ -48,14 +48,14 @@ perfectMatchingsM edge max = do
 hasPerfectMatchingM :: (Int -> Int -> IO Bool) -> Int -> IO Bool
 hasPerfectMatchingM edge max = do
     edges <- filterM (\(i,j) -> edge i j) (allPairs max) -- These edges are of the form (i,j), where i is ith elt on left and j is jth elt on right. There are 2*max vertices total.
-    --putStrLn $ "finding edges with edge set: " ++ show edges ++ " and max " ++ show max
+    putStrLn $ "finding edges with edge set: " ++ show edges ++ " and max " ++ show max
     let verts = (map (\i -> (i, False)) [0..max]) ++ (map (\i -> (i, True)) [0..max])
         graphVerts = map (\v -> (pairToInt v, ())) verts
         graphEdges = map (\(i,j) -> (pairToInt (i, False), pairToInt (j, True), ())) edges
         (graph :: G.Gr () ()) = G.mkGraph graphVerts graphEdges 
         matching' = G.maximumMatching graph
         matching = map (\(i1,i2) -> (fst $ intToPair i1, fst $ intToPair i2)) matching'
-    --putStrLn $ "matching obtained is: " ++ show matching
+    putStrLn $ "matching obtained is: " ++ show matching
     return $ (length matching) == (max + 1)
     
 
@@ -82,9 +82,9 @@ genDagLevelMatchings (LeafDag dag _ _) (LeafDag dag' _ _) lvl
     | lvl >= length dag = error $ "bad lvl for dag: dag has length " ++ show (length dag) ++ " while lvl is " ++ (show lvl)
     | lvl >= length dag' = error "bad lvl for dag'" 
     | otherwise = do
-        --putStrLn $ "finding matching on sampl dags: " ++ show (map ppSampling (dag !! lvl)) ++ " and " ++ show (map ppSampling (dag' !! lvl))
+        putStrLn $ "finding matching on sampl dags: " ++ show (map ppSampling (dag !! lvl)) ++ " and " ++ show (map ppSampling (dag' !! lvl))
         matchings <- genPerfectMatchingsByM samplCompat (dag !! lvl) (dag' !! lvl)
-        --putStrLn $ "found " ++ show (length matchings) ++ " matchings: " ++ show (map ppMatching matchings)
+        putStrLn $ "found " ++ show (length matchings) ++ " matchings: " ++ show (map ppMatching matchings)
         return matchings
         where
             samplCompat :: Sampling -> Sampling -> IO Bool
@@ -100,7 +100,7 @@ substEnv sampls = Map.fromList $ map (\(Sampling _ x _, Sampling d y _) -> (x, m
 matchingRespectsConds :: [(Sampling, Sampling)] -> [Expr TBool] -> [Expr TBool] -> IO Bool
 matchingRespectsConds matching c1 c2 | length c1 /= length c2 = return False
   | otherwise = do
-    --putStrLn $ "matching respects conds: " ++ ppMatching matching
+    putStrLn $ "matching respects conds: " ++ ppMatching matching
     let env = (map snd matching)
     let substenv = substEnv matching
         b1 = bAnd c1
@@ -110,7 +110,7 @@ matchingRespectsConds matching c1 c2 | length c1 /= length c2 = return False
 
 matchingRespectsArgs :: [(Sampling, Sampling)] -> [Expr TBool] -> IO Bool
 matchingRespectsArgs matching phi' = do
-    --putStrLn $ "matching respects args: " ++ ppMatching matching
+    putStrLn $ "matching respects args: " ++ ppMatching matching
     let env = (map snd matching)
     let substenv = substEnv matching
     bools <- forM matching $ \(s1,s2) -> someExprsEquivUnder env phi' (map (someExprSub substenv) (_sampargs s1)) (_sampargs s2)
@@ -138,13 +138,13 @@ compatPairsM f xs ys = do
 -- assumes dags are of the same shape
 dagEquiv_ :: LeafDag ret -> LeafDag ret -> Int ->  IO [[(Sampling, Sampling)]]
 dagEquiv_ d1 d2 0 = do
-    --putStrLn "stage 0"
+    putStrLn "stage 0"
     initmatchings <- genDagLevelMatchings d1 d2 0
-    --putStrLn $ "initial matchings: " ++ (show $ map ppMatching initmatchings)
+    putStrLn $ "initial matchings: " ++ (show $ map ppMatching initmatchings)
     filterM (\m -> matchingRespectsArgs m []) initmatchings -- Check if initial samplings are equivalent
 
 dagEquiv_ d1 d2 i = do
-    --putStrLn $ "stage " ++ (show i)
+    putStrLn $ "stage " ++ (show i)
     -- sample a distribution from below level
     alphas <- dagEquiv_ d1 d2 (i - 1)
     -- get a bijection for this level, respecting the previous constraints.
@@ -235,7 +235,7 @@ evalExpr emap (AtomExpr (Atom x tr)) =
       Just (SomeSInterp tr2 e) ->
           case testEquality tr tr2 of
             Just Refl -> e
-            _ -> error "type error"
+            _ -> error $ "type error: got " ++ (show tr2) ++ " but expected " ++ (show tr)
       _ -> error $ "not found: " ++ x ++ " in emap " ++ (show emap)
 
 evalExpr emap (Expr (IntLit i)) = literal i
@@ -304,6 +304,7 @@ genFree :: String -> TypeRepr tp -> Symbolic (SInterp tp)
 genFree s TIntRepr = free_
 genFree s TBoolRepr = free_
 genFree s (TTupleRepr ctx) = Ctx.traverseWithIndex (\i repr -> SI <$> genFree (s ++ (show i)) repr) ctx
+genFree s (TEnumRepr (TypeableType)) = free_
 
 -- atomToSymVar (Atom s tr) = fail  $ "unknown atom type: " ++ (show tr)
 
