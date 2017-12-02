@@ -142,7 +142,7 @@ ppLeafDags dags = concatMap (\dag -> go dag ++ "\n") dags
             concatMap (\samplings -> concatMap (\sampling -> (ppSampling sampling) ++ ", ") samplings ++ "\n") sampdag ++
             "Final cond: \n" ++
                 concatMap (\cond -> ppExpr cond ++ "\n") (last conds) ++
-            "Ret: " ++ ppExpr ret
+            "Ret: " ++ ppExpr ret ++ "\n"
 
 
 

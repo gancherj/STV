@@ -7,13 +7,19 @@ import Prot.Examples.Rotate
 import Data.SBV
 import Data.Parameterized.Context as Ctx
 
-tstCommand :: String -> String -> Prog
-tstCommand dname xname = do
-    let d = mkDistr dname TIntRepr (\_ _ -> [])
-    x <- bSampl xname d []
-    bIte (x |<=| 5) 
-        (do { bRet (x + 1) } )
-        (do { bRet (x * 2) } )
+
+tstTuple :: String -> Prog
+tstTuple xname = do
+    let d = mkDistr "D" (TTupleRepr (Ctx.empty Ctx.%> TIntRepr Ctx.%> TIntRepr)) (\_ _ -> [])
+    xt <- bSampl xname d []
+    case ((getIth (mkSome xt) 0), (getIth (mkSome xt) 1)) of
+      ((SomeExp TIntRepr x), (SomeExp TIntRepr y)) -> do
+        bIte (x |<=| 5) 
+            (do { unSome (mkTuple [mkSome x, mkSome y]) $ \_ e -> bRet e } )
+            (do { unSome (mkTuple [mkSome y, mkSome x]) $ \_ e -> bRet e } )
+      _ -> error "type error"
+
+
 
 
 
@@ -29,4 +35,6 @@ main = do
     putStrLn $ ppProgDag rotateB
     --putStrLn . show =<< runProg (tstCommand "x")
     --putStrLn . show =<< progsEquiv (tstCommand "D" "x") (tstCommand "D'" "y") 
+    putStrLn . show =<< progsEquiv (tstTuple "x") (tstTuple "y")
     putStrLn . show =<< progsEquiv rotateA rotateB
+
