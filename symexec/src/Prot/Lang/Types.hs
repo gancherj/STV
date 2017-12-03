@@ -40,6 +40,7 @@ data Type where
     BaseToType :: BaseType -> Type
     TTuple :: Ctx Type -> Type
     TEnum :: t -> Type
+    TSum :: Type -> Type -> Type
 
 type BaseToType = 'BaseToType
 type TInt = BaseToType BaseInt
@@ -54,6 +55,7 @@ data TypeRepr (t :: Type) :: * where
     TUnitRepr :: TypeRepr TUnit
     TTupleRepr :: !(Ctx.Assignment TypeRepr ctx) -> TypeRepr (TTuple ctx)
     TEnumRepr :: TypeableType a -> TypeRepr (TEnum a)
+    TSumRepr :: TypeRepr a -> TypeRepr b -> TypeRepr (TSum a b)
 
 
 type CtxRepr = Ctx.Assignment TypeRepr
@@ -65,6 +67,7 @@ instance Show (TypeRepr tp) where
     show TBoolRepr = "TBool"
     show (TTupleRepr t) = show t
     show (TEnumRepr t) = show t 
+    show (TSumRepr t1 t2) = (show t1) ++ " + " ++ (show t2)
 
 
 instance ShowF TypeRepr
@@ -98,6 +101,10 @@ instance TestEquality TypeRepr where
         case (testEquality t t') of
           Just Refl -> Just Refl
           Nothing -> Nothing
+    testEquality (TSumRepr t1 t2) (TSumRepr t1' t2') =
+        case (testEquality t1 t1', testEquality t2 t2') of
+          (Just Refl, Just Refl) -> Just Refl
+          _ -> Nothing
     testEquality _ _ = Nothing
 
 

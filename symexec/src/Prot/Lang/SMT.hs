@@ -199,6 +199,7 @@ type family SInterp (tp :: Type) :: * where
     SInterp TBool = SBool
     SInterp (TTuple ctx) = Ctx.Assignment SInterp' ctx
     SInterp (TEnum t) = SBV t
+    SInterp (TSum t1 t2) = (SBool, SInterp t1, SInterp t2)
 
 data SInterp' tp = SI { unSI :: SInterp tp }
 
@@ -232,45 +233,82 @@ instance EqSymbolic SomeSInterp where
                               TBoolRepr -> si1 .== si2
                               TEnumRepr t -> si1 .== si2
                               TTupleRepr ictx -> (SomeSInterp tp1 si1) .== (SomeSInterp tp1 si2) 
+                              TSumRepr t1 t2 -> case (si1, si2) of
+                                                  ((b,x, y), (b', x', y')) -> -- Symbolic equality only constrained on active site
+                                                      (b .== b' &&& b .== false &&& (SomeSInterp t1 x) .== (SomeSInterp t1 x'))
+                                                      |||
+                                                      (b .== b' &&& b .== true &&& (SomeSInterp t2 y) .== (SomeSInterp t2 y'))
                         Nothing -> false)  z in
                   bAnd sbools
           Nothing -> false
     (.==) _ _ = false
 
-evalExpr :: Map.Map String (SomeSInterp) -> Expr tp -> SInterp tp
+evalExpr :: Map.Map String (SomeSInterp) -> Expr tp -> Symbolic (SInterp tp)
 evalExpr emap (AtomExpr (Atom x tr)) =
     case Map.lookup x emap of
       Just (SomeSInterp tr2 e) ->
           case testEquality tr tr2 of
-            Just Refl -> e
+            Just Refl -> return e
             _ -> error $ "type error: got " ++ (show tr2) ++ " but expected " ++ (show tr)
       _ -> error $ "not found: " ++ x ++ " in emap " ++ (show emap)
 
-evalExpr emap (Expr (UnitLit)) = ()
-evalExpr emap (Expr (IntLit i)) = literal i
-evalExpr emap (Expr (IntAdd e1 e2)) = (evalExpr emap e1) + (evalExpr emap e2)
-evalExpr emap (Expr (IntMul e1 e2)) = (evalExpr emap e1) * (evalExpr emap e2)
-evalExpr emap (Expr (IntNeg e1 )) = -(evalExpr emap e1) 
+evalExpr emap (Expr (UnitLit)) = return ()
+evalExpr emap (Expr (IntLit i)) = return $ literal i
+evalExpr emap (Expr (IntAdd e1 e2)) = liftM2 (+) (evalExpr emap e1) (evalExpr emap e2)
 
-evalExpr emap (Expr (BoolLit b)) = literal b
-evalExpr emap (Expr (BoolAnd b1 b2)) = (evalExpr emap b1) &&& (evalExpr emap b2)
-evalExpr emap (Expr (BoolOr b1 b2)) = (evalExpr emap b1) ||| (evalExpr emap b2)
-evalExpr emap (Expr (BoolXor b1 b2)) = (evalExpr emap b1) <+> (evalExpr emap b2)
-evalExpr emap (Expr (BoolNot e1 )) = bnot (evalExpr emap e1) 
+evalExpr emap (Expr (IntMul e1 e2)) = liftM2 (*) (evalExpr emap e1) (evalExpr emap e2)
+evalExpr emap (Expr (IntNeg e1 )) = do
+    e <- evalExpr emap e1
+    return $ -e
 
-evalExpr emap (Expr (IntLe e1 e2)) = (evalExpr emap e1) .<= (evalExpr emap e2)
-evalExpr emap (Expr (IntLt e1 e2)) = (evalExpr emap e1) .< (evalExpr emap e2)
-evalExpr emap (Expr (IntGt e1 e2)) = (evalExpr emap e1) .> (evalExpr emap e2)
-evalExpr emap (Expr (IntEq e1 e2)) = (evalExpr emap e1) .== (evalExpr emap e2)
-evalExpr emap (Expr (IntNeq e1 e2)) = (evalExpr emap e1) ./= (evalExpr emap e2)
+evalExpr emap (Expr (BoolLit b)) = return $ literal b
+evalExpr emap (Expr (BoolAnd b1 b2)) = liftM2 (&&&) (evalExpr emap b1) (evalExpr emap b2)
+evalExpr emap (Expr (BoolOr b1 b2)) = liftM2 (|||) (evalExpr emap b1) (evalExpr emap b2)
+evalExpr emap (Expr (BoolXor b1 b2)) = liftM2 (<+>) (evalExpr emap b1) (evalExpr emap b2)
+evalExpr emap (Expr (BoolNot e1 )) = bnot <$> (evalExpr emap e1) 
 
-evalExpr emap (Expr (MkTuple cr asgn)) = F.fmapFC (SI . (evalExpr emap)) asgn
-evalExpr emap (Expr (TupleGet _ tup ind tp)) = unSI $ (evalExpr emap tup) Ctx.! ind
-evalExpr emap (Expr (TupleSet cr tup ind e)) = 
-    Ctx.update ind (SI $ evalExpr emap e) (evalExpr emap tup)
+evalExpr emap (Expr (IntLe e1 e2)) = liftM2 (.<=) (evalExpr emap e1) (evalExpr emap e2)
+evalExpr emap (Expr (IntLt e1 e2)) = liftM2 (.<) (evalExpr emap e1)  (evalExpr emap e2)
+evalExpr emap (Expr (IntGt e1 e2)) = liftM2 (.>) (evalExpr emap e1) (evalExpr emap e2)
+evalExpr emap (Expr (IntEq e1 e2)) = liftM2 (.==) (evalExpr emap e1) (evalExpr emap e2)
+evalExpr emap (Expr (IntNeq e1 e2)) = liftM2 (./=) (evalExpr emap e1) (evalExpr emap e2)
 
-evalExpr emap (Expr (EnumLit (TypeableValue a))) = literal a
-evalExpr emap (Expr (EnumEq (TypeableType) e1 e2)) = (evalExpr emap e1) .== (evalExpr emap e2)
+evalExpr emap (Expr (MkTuple cr asgn)) = Ctx.traverseWithIndex (\i e -> SI <$> evalExpr emap e) asgn
+    
+evalExpr emap (Expr (TupleGet _ tup ind tp)) = do
+    t <- evalExpr emap tup
+    return $ unSI $ t Ctx.! ind
+    
+evalExpr emap (Expr (TupleSet cr tup ind e)) = do
+    a <- evalExpr emap e
+    b <- evalExpr emap tup
+    return $ Ctx.update ind (SI a) b
+
+evalExpr emap (Expr (EnumLit (TypeableValue a))) = return $ literal a
+evalExpr emap (Expr (EnumEq (TypeableType) e1 e2)) = liftM2 (.==) (evalExpr emap e1) (evalExpr emap e2)
+
+evalExpr emap (Expr (InLeft e tp)) = do
+    y <- genFree "rightF" tp
+    x <- evalExpr emap e
+    return $ (false, x, y)
+evalExpr emap (Expr (InRight e tp)) = do
+    x <- genFree "leftF" tp
+    y <- evalExpr emap e
+    return $ (true, x, y)
+evalExpr emap (Expr (GetActive e)) = do
+    t <- evalExpr emap e
+    case t of
+      (b,x,y) -> return b
+
+evalExpr emap (Expr (ExtractLeft e)) = do
+    t <- evalExpr emap e
+    case t of
+      (b,x,y) -> return x
+
+evalExpr emap (Expr (ExtractRight e)) = do
+    t <- evalExpr emap e
+    case t of
+      (b,x,y) -> return y
 
 
 exprEquiv :: [Sampling] -> Expr tp -> Expr tp -> IO Bool
@@ -281,8 +319,12 @@ exprEquivUnder samps conds e1 e2 = do
     --putStrLn $ "testing " ++ (ppExpr e1) ++ " ?= " ++ (ppExpr e2) ++ " under " ++ (show $ map ppSampling samps)
     runSMT $ do
         env <- mkEnv samps
-        constrain $ (SomeSInterp (typeOf e1) (evalExpr env e1)) ./= (SomeSInterp (typeOf e2) (evalExpr env e2))
-        forM_ conds $ \cond -> constrain $ (evalExpr env cond) .== true
+        ans1 <- evalExpr env e1
+        ans2 <- evalExpr env e2
+        constrain $ (SomeSInterp (typeOf e1) ans1) ./= (SomeSInterp (typeOf e2) ans2)
+        forM_ conds $ \cond -> do
+            bc <- evalExpr env cond
+            constrain $ bc .== true
         query $ do
             cs <- checkSat
             case cs of
@@ -315,6 +357,11 @@ genFree s TIntRepr = free_
 genFree s TBoolRepr = free_
 genFree s (TTupleRepr ctx) = Ctx.traverseWithIndex (\i repr -> SI <$> genFree (s ++ (show i)) repr) ctx
 genFree s (TEnumRepr (TypeableType)) = free_
+genFree s (TSumRepr t1 t2) = do
+    b <- free_
+    x <- genFree (s ++ "l") t1
+    y <- genFree (s ++ "r") t2
+    return (b,x,y)
 
 -- atomToSymVar (Atom s tr) = fail  $ "unknown atom type: " ++ (show tr)
 
@@ -333,7 +380,8 @@ leafSatisfiable :: Leaf ret -> IO Bool
 leafSatisfiable (Leaf samps conds ret) = do
     runSMT $ do
         env <- mkEnv samps 
-        constrain $ bAnd $ map (evalExpr env) conds
+        bs <- mapM (evalExpr env) conds
+        constrain $ bAnd bs
         query $ do
             cs <- checkSat
             case cs of

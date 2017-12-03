@@ -17,6 +17,12 @@ class TypeOf (k :: Type -> *) where
     typeOf :: forall tp. k tp -> TypeRepr tp
 
 data App (f :: Type -> *) (tp :: Type) where
+    InLeft :: !(f t1) -> TypeRepr t2 -> App f (TSum t1 t2)
+    InRight :: !(f t2) -> TypeRepr t1 -> App f (TSum t1 t2)
+    GetActive :: !(f (TSum t1 t2)) -> App f TBool
+    ExtractLeft :: !(f (TSum t1 t2)) -> App f t1
+    ExtractRight :: !(f (TSum t1 t2)) -> App f t2
+
     UnitLit :: App f TUnit
     IntLit :: !Integer -> App f TInt
     IntAdd :: !(f TInt) -> !(f TInt) -> App f TInt
@@ -85,6 +91,15 @@ instance TypeOf Expr where
     typeOf (Expr (EnumLit x )) = TEnumRepr $ typeableTypeOfValue x 
     typeOf (Expr (EnumEq _ x _)) = TBoolRepr
 
+    typeOf (Expr (InLeft e tr)) = TSumRepr (Prot.Lang.Expr.typeOf e) tr
+    typeOf (Expr (InRight e tl)) = TSumRepr tl (Prot.Lang.Expr.typeOf e) 
+    typeOf (Expr (GetActive _)) = TBoolRepr
+    typeOf (Expr (ExtractLeft e)) =
+        case (Prot.Lang.Expr.typeOf e) of
+          TSumRepr t1 t2 -> t1
+    typeOf (Expr (ExtractRight e)) =
+        case (Prot.Lang.Expr.typeOf e) of
+          TSumRepr t1 t2 -> t2
 
 
 instance ShowF Expr where
@@ -146,7 +161,11 @@ ppExpr (Expr (TupleSet cr ag ind val)) = (ppExpr ag) ++ "{" ++ (show ind) ++ " -
 
 ppExpr (Expr (EnumLit i)) = show i
 ppExpr (Expr (EnumEq _ x y)) = (ppExpr x) ++ " == " ++ (ppExpr y)
-
+ppExpr (Expr (InLeft e t)) = "inl " ++ (ppExpr e)
+ppExpr (Expr (InRight e t)) = "inr " ++ (ppExpr e)
+ppExpr (Expr (GetActive e)) = "getActive " ++ (ppExpr e)
+ppExpr (Expr (ExtractLeft e)) = "exl " ++ (ppExpr e)
+ppExpr (Expr (ExtractRight e)) = "exr " ++ (ppExpr e)
 --- utility functions
 
 exprsToCtx :: [SomeExp] -> (forall ctx. CtxRepr ctx -> Ctx.Assignment Expr ctx -> a) -> a
@@ -307,6 +326,12 @@ exprSub emap e = runFor (Map.size emap) (go emap) e
           go emap (Expr (TupleSet ctx tup ind e)) = Expr (TupleSet ctx (go emap tup) ind (go emap e))
           go emap (Expr (EnumLit i)) = Expr (EnumLit i)
           go emap (Expr (EnumEq t a b)) = Expr (EnumEq t (go emap a) (go emap b))
+        
+          go emap (Expr (InLeft e tp)) = Expr (InLeft (go emap e) tp)
+          go emap (Expr (InRight e tp)) = Expr (InRight (go emap e) tp)
+          go emap (Expr (GetActive e)) = Expr (GetActive (go emap e))
+          go emap (Expr (ExtractLeft e)) = Expr (ExtractLeft (go emap e))
+          go emap (Expr (ExtractRight e)) = Expr (ExtractRight (go emap e))
 
 someExprSub :: Map.Map String SomeExp -> SomeExp -> SomeExp
 someExprSub emap e1 = 
@@ -344,6 +369,13 @@ instance FreeVar (Expr tp) where
 
     freeVars (Expr (EnumLit _)) = Set.empty
     freeVars (Expr (EnumEq _ a b)) = (freeVars a) `Set.union` (freeVars b)
+
+    freeVars (Expr (InLeft e _)) = freeVars e
+    freeVars (Expr (InRight e _)) = freeVars e
+    freeVars (Expr (GetActive e)) = freeVars e
+    freeVars (Expr (ExtractLeft e)) = freeVars e
+    freeVars (Expr (ExtractRight e)) = freeVars e
+
 
 instance FreeVar SomeExp where
     freeVars (SomeExp tp e) = freeVars e

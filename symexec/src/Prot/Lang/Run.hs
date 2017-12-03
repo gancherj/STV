@@ -19,6 +19,7 @@ type family TInterp (tp :: Type) :: * where
     TInterp TBool = Bool
     TInterp (TTuple ctx) = Ctx.Assignment TInterp' ctx
     TInterp (TEnum t) = TypeableValue t
+    TInterp (TSum t1 t2) = Either (TInterp t1) (TInterp t2)
 
 
 newtype TInterp' tp = TI {unTI :: TInterp tp}
@@ -31,6 +32,10 @@ instance Show SomeInterp where
     show (SomeInterp TBoolRepr ti) = (show ti)
     show (SomeInterp (TTupleRepr ctx) ti) = showTupleInterp ctx ti
     show (SomeInterp (TEnumRepr tp) ti) = (show ti)
+    show (SomeInterp (TSumRepr t1 t2) ti) = 
+        case ti of
+          Left e -> show (SomeInterp t1 e)
+          Right e -> show (SomeInterp t2 e)
 
 data PPInterp tp = PPInterp (TypeRepr tp) (TInterp tp)
 
@@ -44,6 +49,10 @@ showTupleInterp ctx asgn =
               TBoolRepr -> show val
               TEnumRepr tp -> show val
               TTupleRepr ictx -> showTupleInterp ictx val
+              TSumRepr t1 t2 -> 
+                  case val of
+                    Left e -> show (SomeInterp t1 e)
+                    Right e -> show (SomeInterp t2 e)
               ) z in
     "[" ++ (concatMap (\s -> s ++ ", ") valstrs) ++ "]"
 
@@ -83,6 +92,20 @@ evalExpr emap (Expr (TupleSet cr tup ind e)) =
 evalExpr emap (Expr (EnumLit _)) = error "enum dont care"
 evalExpr emap (Expr (EnumEq _ _ _)) = error "enum dont care"
 
+evalExpr emap (Expr (InLeft e tp)) = Left (evalExpr emap e)
+evalExpr emap (Expr (InRight e tp)) = Right (evalExpr emap e)
+evalExpr emap (Expr (GetActive e)) = case (evalExpr emap e) of
+                                       Left _ -> False
+                                       Right _ -> True
+
+evalExpr emap (Expr (ExtractLeft e)) = case (evalExpr emap e) of
+                                         Left e -> e
+                                         Right _ -> error "bad extract"
+
+evalExpr emap (Expr (ExtractRight e)) = case (evalExpr emap e) of
+                                          Left _ -> error "bad extract"
+                                          Right e -> e
+
 
 runQuery :: String -> String -> TypeRepr tp -> IO (TInterp tp)
 runQuery x dn TUnitRepr = return ()
@@ -101,6 +124,7 @@ runQuery x dn (TTupleRepr ctxrepr) = do
         return $ TI e) ctxrepr
     return $ asgn
 runQuery x dn (TEnumRepr t) = fail "enum query"
+runQuery _ _ _ = fail "unkonwn"
 
 
 runCommand_ :: Map.Map String (SomeInterp) -> Command tp -> IO (TInterp tp)
