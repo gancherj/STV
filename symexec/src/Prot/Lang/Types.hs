@@ -29,10 +29,12 @@ instance Show (TypeableValue x) where
 data BaseType where
     BaseInt :: BaseType
     BaseBool :: BaseType
+    BaseUnit :: BaseType
 
 data BaseTypeRepr (tp :: BaseType) :: * where
     BaseIntRepr :: BaseTypeRepr BaseInt
     BaseBoolRepr :: BaseTypeRepr BaseBool
+    BaseUnitRepr :: BaseTypeRepr BaseUnit
 
 data Type where
     BaseToType :: BaseType -> Type
@@ -44,10 +46,12 @@ type TInt = BaseToType BaseInt
 type TBool = BaseToType BaseBool
 type TTuple = 'TTuple
 type TEnum = 'TEnum
+type TUnit = BaseToType BaseUnit
 
 data TypeRepr (t :: Type) :: * where
     TIntRepr :: TypeRepr TInt
     TBoolRepr :: TypeRepr TBool
+    TUnitRepr :: TypeRepr TUnit
     TTupleRepr :: !(Ctx.Assignment TypeRepr ctx) -> TypeRepr (TTuple ctx)
     TEnumRepr :: TypeableType a -> TypeRepr (TEnum a)
 
@@ -56,6 +60,7 @@ type CtxRepr = Ctx.Assignment TypeRepr
 type BaseCtxRepr = Ctx.Assignment BaseTypeRepr
 
 instance Show (TypeRepr tp) where
+    show TUnitRepr = "TUnit"
     show TIntRepr = "TInt"
     show TBoolRepr = "TBool"
     show (TTupleRepr t) = show t
@@ -70,6 +75,9 @@ instance KnownRepr TypeRepr TInt where
 instance KnownRepr TypeRepr TBool where
     knownRepr = TBoolRepr
 
+instance KnownRepr TypeRepr TUnit where
+    knownRepr = TUnitRepr
+
 type KnownCtx f = KnownRepr (Ctx.Assignment f)
 
 instance KnownCtx TypeRepr ctx => KnownRepr TypeRepr (TTuple ctx) where
@@ -79,6 +87,7 @@ instance (Eq a, Ord a, Typeable a, Show a, Read a, Data a, SymWord a, HasKind a,
     knownRepr = TEnumRepr TypeableType
 
 instance TestEquality TypeRepr where
+    testEquality TUnitRepr TUnitRepr = Just Refl
     testEquality TIntRepr TIntRepr = Just Refl
     testEquality TBoolRepr TBoolRepr = Just Refl
     testEquality (TTupleRepr t) (TTupleRepr t') = 
@@ -89,16 +98,19 @@ instance TestEquality TypeRepr where
         case (testEquality t t') of
           Just Refl -> Just Refl
           Nothing -> Nothing
+    testEquality _ _ = Nothing
 
 
 instance TestEquality BaseTypeRepr where
     testEquality BaseIntRepr BaseIntRepr = Just Refl
     testEquality BaseBoolRepr BaseBoolRepr = Just Refl
+    testEquality BaseUnitRepr BaseUnitRepr = Just Refl
     testEquality _ _ = Nothing
 
 instance Show (BaseTypeRepr tp) where
     show (BaseIntRepr) = "Int"
     show (BaseBoolRepr) = "Bool"
+    show (BaseUnitRepr) = "Unit"
 
 instance ShowF BaseTypeRepr where
 
@@ -114,5 +126,6 @@ asBaseType tp =
     case tp of
       TBoolRepr -> AsBaseType BaseBoolRepr
       TIntRepr -> AsBaseType BaseIntRepr
+      TUnitRepr -> AsBaseType BaseUnitRepr
       _ -> NotBaseType
 

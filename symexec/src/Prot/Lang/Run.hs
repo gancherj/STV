@@ -14,6 +14,7 @@ import qualified Data.Map.Strict as Map
 
 
 type family TInterp (tp :: Type) :: * where
+    TInterp TUnit = ()
     TInterp TInt = Integer
     TInterp TBool = Bool
     TInterp (TTuple ctx) = Ctx.Assignment TInterp' ctx
@@ -25,6 +26,7 @@ newtype TInterp' tp = TI {unTI :: TInterp tp}
 data SomeInterp = forall tp. SomeInterp (TypeRepr tp) (TInterp tp)
 
 instance Show SomeInterp where
+    show (SomeInterp TUnitRepr ti) = (show ti)
     show (SomeInterp TIntRepr ti) = (show ti)
     show (SomeInterp TBoolRepr ti) = (show ti)
     show (SomeInterp (TTupleRepr ctx) ti) = showTupleInterp ctx ti
@@ -37,6 +39,7 @@ showTupleInterp ctx asgn =
     let z = Ctx.zipWith (\a b -> PPInterp a (unTI b)) ctx asgn 
         valstrs = F.toListFC (\(PPInterp tr val) ->
             case tr of
+              TUnitRepr -> show val
               TIntRepr -> show val
               TBoolRepr -> show val
               TEnumRepr tp -> show val
@@ -54,6 +57,7 @@ evalExpr emap (AtomExpr (Atom x tr)) =
             _ -> error "type error"
       _ -> error "not found"
 
+evalExpr emap (Expr (UnitLit)) = ()
 evalExpr emap (Expr (IntLit i)) = i
 evalExpr emap (Expr (IntAdd e1 e2)) = (evalExpr emap e1) + (evalExpr emap e2)
 evalExpr emap (Expr (IntMul e1 e2)) = (evalExpr emap e1) * (evalExpr emap e2)
@@ -81,6 +85,8 @@ evalExpr emap (Expr (EnumEq _ _ _)) = error "enum dont care"
 
 
 runQuery :: String -> String -> TypeRepr tp -> IO (TInterp tp)
+runQuery x dn TUnitRepr = return ()
+
 runQuery x dn TIntRepr = do
     putStrLn $ x ++ " <- " ++ dn ++ ":"
     line <- getLine

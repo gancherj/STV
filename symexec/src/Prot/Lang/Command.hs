@@ -5,7 +5,6 @@ import Data.Type.Equality
 import Prot.Lang.Expr
 
 data Distr tp where
-    -- todo this representation of constraint for symdistr is problematic
     SymDistr :: String -> TypeRepr tp -> (Expr tp -> [SomeExp] -> [Expr TBool]) -> Distr tp
     UnifInt :: Integer -> Integer -> Distr TInt
     UnifBool :: Distr TBool
@@ -13,7 +12,7 @@ data Distr tp where
 compareDistr :: Distr tp -> Distr tp1 -> Bool
 compareDistr (UnifInt i1 i2) (UnifInt i1' i2') = (i1 == i1') && (i2 == i2')
 compareDistr (UnifBool) (UnifBool) = True
-compareDistr (SymDistr x tp _) (SymDistr y tp2 _) = -- constraint functions not compared
+compareDistr (SymDistr x tp _) (SymDistr y tp2 _) = -- constraint functions not compared. 
     case testEquality tp tp2 of
       Just Refl -> x == y
       Nothing -> False
@@ -64,4 +63,11 @@ ppCommand (Let x e k) =
 ppCommand (Ite b e1 e2) =
     "if " ++ (ppExpr b) ++ " then " ++ (ppCommand e1) ++ " else " ++ (ppCommand e2)
 ppCommand (Ret e) = "ret " ++ (ppExpr e)
+
+chainCommand :: Command tp -> (Expr tp -> Command tp2) -> Command tp2
+chainCommand (Sampl x d es k) c2 = Sampl x d es (chainCommand k c2)
+chainCommand (Let x e k) c2 = Let x e (chainCommand k c2)
+chainCommand (Ite e k1 k2) c2 = Ite e (chainCommand k1 c2) (chainCommand k2 c2)
+chainCommand (Ret e) c2 = c2 e
+
 

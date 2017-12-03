@@ -17,6 +17,7 @@ class TypeOf (k :: Type -> *) where
     typeOf :: forall tp. k tp -> TypeRepr tp
 
 data App (f :: Type -> *) (tp :: Type) where
+    UnitLit :: App f TUnit
     IntLit :: !Integer -> App f TInt
     IntAdd :: !(f TInt) -> !(f TInt) -> App f TInt
     IntMul :: !(f TInt) -> !(f TInt) -> App f TInt
@@ -63,6 +64,7 @@ instance IsExpr (Expr (TTuple ctx)) where
 instance TypeOf Expr where
 
     typeOf (AtomExpr (Atom _ t)) = t
+    typeOf (Expr (UnitLit)) = TUnitRepr
     typeOf (Expr (IntLit _)) = TIntRepr
     typeOf (Expr (IntAdd _ _)) = TIntRepr
     typeOf (Expr (IntMul _ _)) = TIntRepr
@@ -107,6 +109,9 @@ instance Eq SomeExp where
 ppSomeExp :: SomeExp -> String
 ppSomeExp (SomeExp _ e) = ppExpr e
 
+unitExp :: Expr TUnit
+unitExp = Expr (UnitLit)
+
 mkSome :: Expr tp -> SomeExp
 mkSome e = SomeExp (Prot.Lang.Expr.typeOf e) e
 
@@ -117,6 +122,7 @@ unSome e k =
 
 ppExpr :: Expr tp -> String
 ppExpr (AtomExpr (Atom x _)) = x
+ppExpr (Expr (UnitLit)) = "()"
 ppExpr (Expr (IntLit i)) = show i
 ppExpr (Expr (IntAdd e1 e2)) = (ppExpr e1) ++ " + " ++ (ppExpr e2)
 ppExpr (Expr (IntMul e1 e2)) = (ppExpr e1) ++ " * " ++ (ppExpr e2)
@@ -224,6 +230,7 @@ class SynEq (f :: k -> *) where
     synEq :: f a -> f b -> Bool
 
 instance (SynEq f) => SynEq (App f) where
+   synEq (UnitLit) (UnitLit) = True
    synEq (IntLit i) (IntLit i2) = i == i2
    synEq  (IntAdd e1 e2) (IntAdd e1' e2') = (synEq e1 e1') && (synEq e2 e2')
    synEq  (IntMul e1 e2) (IntMul e1' e2') = (synEq e1 e1') && (synEq e2 e2')
@@ -277,6 +284,7 @@ exprSub emap e = runFor (Map.size emap) (go emap) e
                       Just Refl -> e
                       Nothing -> error "type error"
                 Nothing -> error $ "var not found in substitution: " ++ x
+          go emap (Expr (UnitLit)) = Expr (UnitLit)
           go emap (Expr (IntLit i)) = Expr (IntLit i)
           go emap (Expr (IntAdd e1 e2)) = Expr (IntAdd (go emap e1) (go emap e2))
           go emap (Expr (IntMul e1 e2)) = Expr (IntMul (go emap e1) (go emap e2))
@@ -312,6 +320,7 @@ class FreeVar a where
 instance FreeVar (Expr tp) where
 
     freeVars (AtomExpr (Atom x tp)) = Set.singleton x 
+    freeVars (Expr (UnitLit)) = Set.empty
     freeVars (Expr (IntLit _)) = Set.empty
     freeVars (Expr (IntAdd e1 e2)) = (freeVars e1) `Set.union` (freeVars e2)
     freeVars (Expr (IntMul e1 e2)) = (freeVars e1) `Set.union` (freeVars e2)

@@ -143,7 +143,8 @@ dagEquiv_ d1 d2 0 = do
     putStrLn $ "initial matchings: " ++ (show $ map ppMatching initmatchings)
     filterM (\m -> matchingRespectsArgs m []) initmatchings -- Check if initial samplings are equivalent
 
-dagEquiv_ d1 d2 i = do
+dagEquiv_ d1 d2 i | i <= 0 = fail "bad stage"
+                  | otherwise = do
     putStrLn $ "stage " ++ (show i)
     -- sample a distribution from below level
     alphas <- dagEquiv_ d1 d2 (i - 1)
@@ -169,12 +170,15 @@ finalIsoGood d1 d2 iso = do
 dagEquiv :: LeafDag ret -> LeafDag ret -> IO Bool
 dagEquiv d1 d2 | not (dagCompatible d1 d2) = return False
  |otherwise = do
-    isos <- dagEquiv_ d1 d2 (dagRank d1 - 1)
-    case (null isos) of
-      True -> return False
+    case (dagRank d1 == 0) of
+      True -> exprEquiv [] (_leafDagRet d1) (_leafDagRet d2) -- If dag is empty, both dags are simply expressions. Verify their unconditional equivalence.
       False -> do
-        anygood <- mapM (finalIsoGood d1 d2) isos
-        return $ bOr anygood
+        isos <- dagEquiv_ d1 d2 (dagRank d1 - 1)
+        case (null isos) of
+          True -> return False
+          False -> do
+            anygood <- mapM (finalIsoGood d1 d2) isos
+            return $ bOr anygood
 
 
 
@@ -190,6 +194,7 @@ leavesEquiv l1 l2 | length l1 /= length l2 = fail "trees have differing numbers 
 
 
 type family SInterp (tp :: Type) :: * where
+    SInterp TUnit = ()
     SInterp TInt = SInteger
     SInterp TBool = SBool
     SInterp (TTuple ctx) = Ctx.Assignment SInterp' ctx
@@ -200,6 +205,7 @@ data SInterp' tp = SI { unSI :: SInterp tp }
 data SomeSInterp = forall tp. SomeSInterp (TypeRepr tp) (SInterp tp)
 
 instance Show SomeSInterp where
+    show (SomeSInterp TUnitRepr x) = "()"
     show (SomeSInterp TIntRepr x) = show x
     show (SomeSInterp TBoolRepr y) = show y
     show _ = "<tuple>"
@@ -208,6 +214,7 @@ data ZipInterp tp = ZipInterp (TypeRepr tp) (SInterp tp)
 data ZipZip tp = ZipZip (ZipInterp tp) (ZipInterp tp)
 
 instance EqSymbolic SomeSInterp where
+    (.==) (SomeSInterp TUnitRepr a) (SomeSInterp TUnitRepr b) = true
     (.==) (SomeSInterp TIntRepr a) (SomeSInterp TIntRepr b) = a .== b
     (.==) (SomeSInterp TBoolRepr a) (SomeSInterp TBoolRepr b) = a .== b
     (.==) (SomeSInterp (TTupleRepr ctx) a) (SomeSInterp (TTupleRepr ctx') b) = 
@@ -220,6 +227,7 @@ instance EqSymbolic SomeSInterp where
                       case (testEquality tp1 tp2) of
                         Just Refl ->
                             case tp1 of
+                              TUnitRepr -> true
                               TIntRepr -> si1 .== si2
                               TBoolRepr -> si1 .== si2
                               TEnumRepr t -> si1 .== si2
@@ -238,6 +246,7 @@ evalExpr emap (AtomExpr (Atom x tr)) =
             _ -> error $ "type error: got " ++ (show tr2) ++ " but expected " ++ (show tr)
       _ -> error $ "not found: " ++ x ++ " in emap " ++ (show emap)
 
+evalExpr emap (Expr (UnitLit)) = ()
 evalExpr emap (Expr (IntLit i)) = literal i
 evalExpr emap (Expr (IntAdd e1 e2)) = (evalExpr emap e1) + (evalExpr emap e2)
 evalExpr emap (Expr (IntMul e1 e2)) = (evalExpr emap e1) * (evalExpr emap e2)
@@ -301,6 +310,7 @@ atomToSymVar :: Atom tp -> Symbolic (SInterp tp)
 atomToSymVar (Atom s tp) = genFree s tp
    
 genFree :: String -> TypeRepr tp -> Symbolic (SInterp tp)
+genFree s TUnitRepr = return ()
 genFree s TIntRepr = free_
 genFree s TBoolRepr = free_
 genFree s (TTupleRepr ctx) = Ctx.traverseWithIndex (\i repr -> SI <$> genFree (s ++ (show i)) repr) ctx
