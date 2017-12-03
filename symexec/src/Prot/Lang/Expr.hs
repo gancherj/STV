@@ -283,7 +283,7 @@ exprSub emap e = runFor (Map.size emap) (go emap) e
                     case (testEquality tp tp2) of
                       Just Refl -> e
                       Nothing -> error "type error"
-                Nothing -> error $ "var not found in substitution: " ++ x
+                Nothing -> (AtomExpr (Atom x tp))
           go emap (Expr (UnitLit)) = Expr (UnitLit)
           go emap (Expr (IntLit i)) = Expr (IntLit i)
           go emap (Expr (IntAdd e1 e2)) = Expr (IntAdd (go emap e1) (go emap e2))

@@ -14,12 +14,16 @@ pongParty (SomeExp stT st) (SomeExp eT e) = do
           let d = unifInt 0 10 
           x <- bSampl d []
           unSome (mkTuple [mkSome $ unitExp, mkSome $ e + x]) (\_ e -> bRet e)
+      _ -> fail "bad type"
 
 pingParty :: SomeExp -> SomeExp -> Prog
 pingParty (SomeExp stT st) (SomeExp eT e) = do
     case eT of
       TIntRepr ->
-          unSome (mkTuple [mkSome $ unitExp, mkSome $ e * 2]) (\_ e -> bRet e)
+          bIte (e |<| 4) 
+              (unSome (mkTuple [mkSome $ unitExp, mkSome $ e * 2]) (\_ e -> bRet e))
+              (unSome (mkTuple [mkSome $ unitExp, mkSome $ e * 9]) (\_ e -> bRet e))
+      _ -> fail "bad type"
 
 pingPongSystem = Map.fromList [("ping", pingParty), ("pong", pongParty)]
 pingPongStates = Map.fromList [("ping", mkSome $ unitExp), ("pong", mkSome $ unitExp)]
