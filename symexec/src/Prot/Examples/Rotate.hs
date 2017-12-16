@@ -7,42 +7,58 @@ import Prot.Lang.Lang
 import Prot.Lang.Types
 import Data.Parameterized.Some
 
-rotateA :: Prog
+rotateA :: Dist (Expr TInt)
 rotateA = do
     let d1 = mkDistr "D" TIntRepr (\_ _ -> [])
         d2 = unifBool 
-    z <- bSampl d1 []
-    x <- bSampl d1 [Some z]
-    bIte (x |<=| 5)
+    z <- dSamp d1 []
+    x <- dSamp d1 [mkSome z]
+    dIte (x |<=| 5)
         (do
-            y <- bSampl d2 []
-            bIte y
-                (bRet (x - 5))
-                (bRet (x * 2))
+            y <- dSamp d2 []
+            dIte y
+                (return (x - 5))
+                (return (x * 2))
         )
         (do
-            y <- bSampl d2 []
-            bIte y
-                (bRet (x - 3))
-                (bRet (x - 1))
+            y <- dSamp d2 []
+            dIte y
+                (return (x - 3))
+                (return (x - 1))
         )
 
-rotateB :: Prog
+rotateB :: Dist (Expr TInt)
 rotateB = do
     let d1 = mkDistr "D" TIntRepr (\_ _ -> [])
         d2 = unifBool 
-    z <- bSampl d1 []
-    y <- bSampl d2 []
-    bIte y
+    z <- dSamp d1 []
+    y <- dSamp d2 []
+    dIte y
         (do
-            x <- bSampl d1 [Some z]
-            bIte (x |<=| 5)
-                (bRet (x - 5))
-                (bRet (x - 3))
+            x <- dSamp d1 [mkSome z]
+            dIte (x |<=| 5)
+                (return (x - 5))
+                (return (x - 3))
         )
         (do
-            x <- bSampl d1 [Some z]
-            bIte (x |<=| 5)
-                (bRet (x * 2))
-                (bRet (x - 1))
+            x <- dSamp d1 [mkSome z]
+            dIte (x |<=| 5)
+                (return (x * 2))
+                (return (x - 1))
         )
+
+tryComp :: Dist (Expr TInt)
+tryComp = do
+    x <- rotateB
+    y <- rotateB
+    return (x + y)
+
+
+tryWrongRet0 :: Dist Integer
+tryWrongRet0 = do
+    return 37
+
+tryWrongRet :: Dist (Expr TInt)
+tryWrongRet = do
+    x <- tryWrongRet0
+    return (fromInteger x)

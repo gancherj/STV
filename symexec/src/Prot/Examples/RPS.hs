@@ -10,37 +10,35 @@ import Prot.MPS.MPS
 import Data.Parameterized.Ctx
 import Data.Parameterized.Context as Ctx
 
-returnWith :: SomeExp -> SomeExp -> Prog
-returnWith st msg =
-    unSome (mkTuple [st, msg]) (\_ e -> bRet e)
+pongParty :: Party TInt
+pongParty = Party unitExp react
+    where
+        react :: Expr TUnit -> Expr TInt -> Dist (Expr TUnit, Expr TInt)
+        react _ msg = do
+            let d = unifInt 0 10
+            x <- dSamp d []
+            return (unitExp, msg + x)
 
-pongParty :: SomeExp -> SomeExp -> Prog
-pongParty (SomeExp stT st) (SomeExp eT e) = do
-    case eT of
-      TIntRepr -> do
-          let d = unifInt 0 10 
-          x <- bSampl d []
-          returnWith (mkSome $ unitExp) (mkSome $ e + x)
-      _ -> fail "bad type"
+pingParty :: Party TInt
+pingParty = Party unitExp react
+    where
+        react :: Expr TUnit -> Expr TInt -> Dist (Expr TUnit, Expr TInt)
+        react _ msg =
+            dIte (msg |<| 4)
+                (return (unitExp, msg + 2))
+                (return (unitExp, msg * 9))
 
-pingParty :: SomeExp -> SomeExp -> Prog
-pingParty (SomeExp stT st) (SomeExp eT e) = do
-    case eT of
-      TIntRepr ->
-          bIte (e |<| 4) 
-              (returnWith (mkSome $ unitExp) (mkSome $ e + 2))
-              (returnWith (mkSome $ unitExp) (mkSome $ e * 9))
-      _ -> fail "bad type"
 
-pingPongSystem = Map.fromList [("ping", pingParty), ("pong", pongParty)]
-pingPongStates = Map.fromList [("ping", mkSome $ unitExp), ("pong", mkSome $ unitExp)]
 pingPongInitMsg = mkSome $ (0 :: Expr TInt)
 pingPongScript = ["ping", "pong", "ping", "pong"]
 
-pingPongProg :: Prog
-pingPongProg = runMPS pingPongSystem pingPongStates pingPongInitMsg pingPongScript
+pingPong :: Dist (Expr TInt)
+pingPong = do
+    (_, m) <- runMPS (Map.fromList [("ping", pingParty), ("pong", pongParty)]) 0 ["ping", "pong", "ping", "pong"]
+    return m
 
 --
+{-
 
 type family Encode (t :: *) = (e :: Type) | e -> t
 
@@ -78,5 +76,4 @@ instance Encodable Msg where
 rpsIdeal :: Prog
 rpsIdeal = bRet (false :: Expr TBool)
 
-
-
+-}

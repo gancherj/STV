@@ -105,7 +105,10 @@ matchingRespectsConds matching c1 c2 | length c1 /= length c2 = return False
     let substenv = substEnv matching
         b1 = bAnd c1
         b2 = bAnd c2
+    putStrLn $ "comparing " ++ (ppExpr b1) ++ " to " ++ (ppExpr b2)
+    putStrLn $ "under substitution " ++ (show substenv) 
     exprEquiv env (exprSub substenv b1) b2
+
 
 
 matchingRespectsArgs :: [(Sampling, Sampling)] -> [Expr TBool] -> IO Bool
@@ -160,10 +163,12 @@ dagEquiv_ d1 d2 i | i <= 0 = fail "bad stage"
 finalIsoGood :: LeafDag ret -> LeafDag ret -> [(Sampling, Sampling)] -> IO Bool
 finalIsoGood d1 d2 iso = do
     --putStrLn $ "check for good iso with: " ++ ppMatching iso
+    -- TODO need to be matchingRespectsArgsConds?
     b <- matchingRespectsConds iso (dagCondLevel d1 (dagRank d1 - 1)) (dagCondLevel d2 (dagRank d2 - 1))
     let env = (map snd iso)
     let substenv = substEnv iso
     --putStrLn "final check for ret"
+    putStrLn "hello final"
     b' <- exprEquiv env (exprSub substenv $ _leafDagRet d1) (_leafDagRet d2)
     return (b && b')
 
@@ -238,10 +243,12 @@ instance EqSymbolic SomeSInterp where
                                                       (b .== b' &&& b .== false &&& (SomeSInterp t1 x) .== (SomeSInterp t1 x'))
                                                       |||
                                                       (b .== b' &&& b .== true &&& (SomeSInterp t2 y) .== (SomeSInterp t2 y'))
-                        Nothing -> false)  z in
-                  bAnd sbools
+                        Nothing -> false) z in
+              bAnd sbools
           Nothing -> false
-    (.==) _ _ = false
+
+    (.==) (SomeSInterp (TSumRepr t1 t2) _) _ = error "unimp"
+--    (.==) _ _ = false
 
 evalExpr :: Map.Map String (SomeSInterp) -> Expr tp -> Symbolic (SInterp tp)
 evalExpr emap (AtomExpr (Atom x tr)) =

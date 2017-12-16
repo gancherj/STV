@@ -9,7 +9,7 @@ import Data.Parameterized.Context as Ctx
 import qualified Prot.MPS.MPS as MPS
 import qualified Prot.Examples.RPS as RPS
 
-
+{-
 tstTuple :: Prog
 tstTuple = do
     let d = mkDistr "D" (TTupleRepr (Ctx.empty Ctx.%> TIntRepr Ctx.%> TIntRepr)) (\_ _ -> [])
@@ -24,6 +24,7 @@ tstTuple = do
 data MyEnum = A | B
 mkSymbolicEnumeration ''MyEnum
 
+
 tstEnum :: Prog
 tstEnum = do
     let d = mkDistr "D" (TEnumRepr (TypeableType :: TypeableType MyEnum)) (\_ _ -> [])
@@ -31,13 +32,14 @@ tstEnum = do
     bIte (x |===| (enumLit A))
      (bRet (3 :: Expr TInt))
      (bRet (4 :: Expr TInt))
-
+-}
 
 
 main :: IO ()
 main = do
+    putStrLn $ ppDist (RPS.pingPong)
+    putStrLn =<< ppSatDistLeaves (RPS.pingPong)
     --putStrLn $ ppProgDag (tstCommand "D" "x")
-    putStrLn $ ppProgDag RPS.pingPongProg
     --putStrLn =<< ppSatProgLeaves rotateA
     --putStrLn =<< ppSatProgLeaves rotateB
     --putStrLn =<< ppSatProgLeaves RPS.pingPongProg
@@ -49,5 +51,5 @@ main = do
     --putStrLn . show =<< progsEquiv (tstCommand "D" "x") (tstCommand "D'" "y") 
     --putStrLn . show =<< progsEquiv (tstTuple "x") (tstTuple "y")
     --putStrLn . show =<< progsEquiv rotateA rotateB
-    putStrLn . show =<< progsEquiv RPS.pingPongProg RPS.pingPongProg
+    --putStrLn . show =<< distEquiv rotateA rotateB
 

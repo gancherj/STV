@@ -114,6 +114,9 @@ mkAtom s tr = AtomExpr $ Atom s tr
 
 data SomeExp = forall tp. SomeExp (TypeRepr tp) (Expr tp)
 
+instance Show SomeExp where
+    show (SomeExp t e) = (ppExpr e) ++ ": " ++ (show t)
+
 instance Eq SomeExp where
     (==) (SomeExp t1 e1) (SomeExp t2 e2) =
         case testEquality t1 t2 of
@@ -294,14 +297,15 @@ runFor 0 f a = a
 runFor i f a = runFor (i - 1) f (f a)
 
 exprSub :: Map.Map String SomeExp -> Expr tp -> Expr tp
-exprSub emap e = runFor (Map.size emap) (go emap) e
+exprSub emap e = go emap e
     where go :: Map.Map String SomeExp -> Expr tp -> Expr tp
           go emap (AtomExpr (Atom x tp)) =
               case (Map.lookup x emap) of
                 Just (SomeExp tp2 e) ->
                     case (testEquality tp tp2) of
                       Just Refl -> e
-                      Nothing -> error "type error"
+                      Nothing -> 
+                          error $ "type error in substitution of " ++ ppExpr e ++ " for " ++ x ++ ": got " ++ (show tp2) ++ " but expected " ++ (show tp)
                 Nothing -> (AtomExpr (Atom x tp))
           go emap (Expr (UnitLit)) = Expr (UnitLit)
           go emap (Expr (IntLit i)) = Expr (IntLit i)

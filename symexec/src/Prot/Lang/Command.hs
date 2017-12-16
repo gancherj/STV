@@ -54,15 +54,26 @@ data Command tp where
 
 data SomeCommand = forall tp. SomeCommand (TypeRepr tp) (Command tp)
 
+instance TypeOf Command where
+    typeOf (Sampl x d args k) = typeOf k
+    typeOf (Let x e k) = typeOf k
+    typeOf (Ite e c1 c2) = typeOf c2
+    typeOf (Ret e) = typeOf e
 
-ppCommand :: Command tp -> String
-ppCommand (Sampl x d args k) =
-    x ++ " <- " ++ (ppDistr d) ++ concatMap ppSomeExp args ++ ";\n" ++ (ppCommand k)
-ppCommand (Let x e k) =
-    "let " ++ x ++ " = " ++ (ppExpr e) ++ ";\n" ++ (ppCommand k)
-ppCommand (Ite b e1 e2) =
-    "if " ++ (ppExpr b) ++ " then " ++ (ppCommand e1) ++ " else " ++ (ppCommand e2)
-ppCommand (Ret e) = "ret " ++ (ppExpr e)
+printTabs :: Int -> String
+printTabs 0 = ""
+printTabs i = "    " ++ (printTabs (i-1))
+
+ppCommand' :: Int -> Command tp -> String
+ppCommand' i (Sampl x d args k) =
+    (printTabs i) ++ x ++ " <- " ++ (ppDistr d) ++ " [" ++ concatMap ppSomeExp args ++ "];\n" ++ (ppCommand' i k)
+ppCommand' i (Let x e k) =
+    (printTabs i) ++ "let " ++ x ++ " = " ++ (ppExpr e) ++ ";\n" ++ (ppCommand' i k)
+ppCommand' i (Ite b e1 e2) =
+    (printTabs i) ++ "if " ++ (ppExpr b) ++ " then \n" ++ (ppCommand' (i + 1) e1) ++ "\n" ++ (printTabs i) ++ "else \n" ++ (ppCommand' (i+1) e2)
+ppCommand' i (Ret e) = (printTabs i) ++ "ret " ++ (ppExpr e)
+
+ppCommand = ppCommand' 0
 
 chainCommand :: Command tp -> (Expr tp -> Command tp2) -> Command tp2
 chainCommand (Sampl x d es k) c2 = Sampl x d es (chainCommand k c2)
