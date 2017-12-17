@@ -23,8 +23,8 @@ transPartialLeaf check (PartialLeaf samps conds k) =
       Ite b e1 e2 -> do
           ret <- check samps conds b
           case ret of
-            0 -> transPartialLeaf check $  PartialLeaf samps (b:conds) e1 -- b is satisfiable but (not b) is not
-            1 -> transPartialLeaf check $ PartialLeaf samps ((Expr (BoolNot b)):conds) e2 -- b is unsatisfiable but (not b) is satisfiable
+            0 -> transPartialLeaf check $  PartialLeaf samps conds e1 -- b is satisfiable but (not b) is not
+            1 -> transPartialLeaf check $ PartialLeaf samps conds e2 -- b is unsatisfiable but (not b) is satisfiable
             _ -> do -- both b and (not b) are satisfiable
                 ls1 <- transPartialLeaf check $ PartialLeaf samps (b:conds) e1
                 ls2 <- transPartialLeaf check $ PartialLeaf samps ((Expr (BoolNot b)):conds) e2
@@ -38,9 +38,8 @@ getLeaves lvs = map go lvs
         go _ = error "bad partial leaf!"
 
 
-commandToLeaves :: Command ret -> IO [Leaf ret]
-commandToLeaves c = do
-    let check = (\_ _ _ -> return 2)
+commandToLeaves :: ([Sampling] -> [Expr TBool] -> Expr TBool -> IO Int) -> Command ret -> IO [Leaf ret]
+commandToLeaves check c = do
     plvs <- transPartialLeaf check (PartialLeaf [] [] c)
     return $ getLeaves plvs
     

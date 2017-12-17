@@ -61,8 +61,8 @@ freshName = do
 
 distEquiv :: Dist (Expr tp) -> Dist (Expr tp) -> IO Bool
 distEquiv d1 d2 = do
-    leaves1 <- commandToLeaves (compileDist d1)
-    leaves2 <- commandToLeaves (compileDist d2)
+    leaves1 <- commandToLeaves SMT.condSatisfiable (compileDist d1)
+    leaves2 <- commandToLeaves SMT.condSatisfiable (compileDist d2)
     SMT.leavesEquiv (map mkDag leaves1) (map mkDag leaves2)
       
 ppDist :: Dist (Expr tp) -> String
@@ -71,12 +71,12 @@ ppDist p =
 
 ppDistLeaves :: Dist (Expr tp) -> IO String
 ppDistLeaves p = do
-    lvs <- commandToLeaves $ compileDist p
+    lvs <- commandToLeaves SMT.condSatisfiable $ compileDist p
     return $ ppLeaves lvs
 
 ppDistDag :: Dist (Expr tp) -> IO String
 ppDistDag p = do
-    lvs <- commandToLeaves $ compileDist p
+    lvs <- commandToLeaves SMT.condSatisfiable $ compileDist p
     return $ ppLeafDags $ map mkDag lvs
 
 runDist :: Dist (Expr tp) -> IO R.SomeInterp

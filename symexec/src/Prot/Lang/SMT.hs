@@ -20,6 +20,10 @@ import Data.Parameterized.TraversableF as F
 import Control.Monad.Trans.Class
 import Data.Functor.Identity
 
+
+-- TODO verify that EqSymbolic is implemented correctly
+-- TODO verify that the main algorithm is correct
+
 allPairs :: Int -> [(Int,Int)]
 allPairs max = concatMap (\i -> map (\j -> (i,j)) [0..max]) [0..max]
 
@@ -388,20 +392,30 @@ mkEnv samps = do
     return $ Map.fromList samplpairs
 
 
-{- this will turn into the check
-leafSatisfiable :: Leaf ret -> IO Bool
-leafSatisfiable (Leaf samps conds ret) = do
-    runSMT $ do
-        env <- mkEnv samps 
-        bs <- mapM (evalExpr env) conds
-        constrain $ bAnd bs
-        query $ do
-            cs <- checkSat
-            case cs of
-              Sat -> return True
-              Unsat -> return False
-              Unk -> fail "unknown"
--}
+condSatisfiable :: [Sampling] -> [Expr TBool] -> Expr TBool -> IO Int
+condSatisfiable samps conds b = do
+    bsat <- go samps conds b
+    bnotsat <- go samps conds (Expr (BoolNot b))
+    case (bsat,bnotsat) of
+      (True, False) -> return 0
+      (False, True) -> return 1
+      (True, True) -> return 2
+      (False, False) -> error "absurd"
+
+    where
+        go samps conds b = runSMT $ do
+            env <- mkEnv samps 
+            bs <- mapM (evalExpr env) conds
+            bb <- evalExpr env b
+            constrain $ bAnd bs
+            constrain $ bb
+            query $ do
+                cs <- checkSat
+                case cs of
+                  Sat -> return True
+                  Unsat -> return False
+                  Unk -> fail "unknown"
+
 
 -----
 --
