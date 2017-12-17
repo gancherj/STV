@@ -38,7 +38,9 @@ tstEnum = do
 
 main :: IO ()
 main = do
-    putStrLn $ show $ length $ commandToLeaves $ (compileDist RPS.rpsMsg)
+    putStrLn $ show $ sizeOfDist RPS.rpsMsg
+    lvs <- commandToLeaves (compileDist RPS.rpsMsg)
+    putStrLn $ show $ length lvs
     --putStrLn $ ppDistLeaves (RPS.rpsMsg)
     --putStrLn $ ppProgDag (tstCommand "D" "x")
     --putStrLn =<< ppSatProgLeaves rotateA

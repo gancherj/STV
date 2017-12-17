@@ -26,6 +26,11 @@ type Dist = Free DistF
 
 data SomeDist = forall tp. SomeDist (TypeRepr tp) (Dist (Expr tp))
 
+sizeOfDist :: Dist (Expr tp) -> Integer
+sizeOfDist (Pure e) = 1
+sizeOfDist (Free (DSamp d args k)) = (sizeOfDist $ k (mkAtom "0" (typeOf d)))
+sizeOfDist (Free (DIte b k1 k2)) = (sizeOfDist k1) + (sizeOfDist k2)
+
 dSamp :: Distr tp -> [SomeExp] -> Dist (Expr tp)
 dSamp d args = liftF $ DSamp d args id
 
@@ -56,31 +61,23 @@ freshName = do
 
 distEquiv :: Dist (Expr tp) -> Dist (Expr tp) -> IO Bool
 distEquiv d1 d2 = do
-    let c = compileDist d1
-        c' = compileDist d2
-        leaves1_ = commandToLeaves c
-        leaves2_ = commandToLeaves c'
-    leaves1 <- filterM SMT.leafSatisfiable leaves1_
-    leaves2 <- filterM SMT.leafSatisfiable leaves2_
+    leaves1 <- commandToLeaves (compileDist d1)
+    leaves2 <- commandToLeaves (compileDist d2)
     SMT.leavesEquiv (map mkDag leaves1) (map mkDag leaves2)
       
 ppDist :: Dist (Expr tp) -> String
 ppDist p =
     ppCommand (compileDist p)
 
-ppDistLeaves :: Dist (Expr tp) -> String
-ppDistLeaves p =
-    ppLeaves $ commandToLeaves $ compileDist p
+ppDistLeaves :: Dist (Expr tp) -> IO String
+ppDistLeaves p = do
+    lvs <- commandToLeaves $ compileDist p
+    return $ ppLeaves lvs
 
-ppDistDag :: Dist (Expr tp) -> String
-ppDistDag p =
-    ppLeafDags $ map mkDag (commandToLeaves $ compileDist p)
-
-ppSatDistLeaves :: Dist (Expr tp) -> IO String
-ppSatDistLeaves p = do
-    let cmd = compileDist p 
-    leaves <- filterM SMT.leafSatisfiable (commandToLeaves cmd)
-    return $ show leaves
+ppDistDag :: Dist (Expr tp) -> IO String
+ppDistDag p = do
+    lvs <- commandToLeaves $ compileDist p
+    return $ ppLeafDags $ map mkDag lvs
 
 runDist :: Dist (Expr tp) -> IO R.SomeInterp
 runDist p = do

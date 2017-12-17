@@ -9,6 +9,46 @@ import qualified Data.Map.Strict as Map
 
 data Sampling = forall tp. Sampling { _sampdistr :: Distr tp, _sampname :: String, _sampargs :: [SomeExp] }
 
+data PartialLeaf ret where
+    PartialLeaf :: {
+        _pLeafSamps :: [Sampling],
+        _pLeafConds :: [Expr TBool],
+        _pLeafCont :: Command ret} -> PartialLeaf ret
+
+transPartialLeaf :: ([Sampling] -> [Expr TBool] -> Expr TBool -> IO Int) -> PartialLeaf ret -> IO [PartialLeaf ret]
+transPartialLeaf check (PartialLeaf samps conds k) =
+    case k of
+      Ret e -> return [PartialLeaf samps conds (Ret e)] -- done if hit bottom
+      Sampl x d args k' -> transPartialLeaf check $ PartialLeaf ((Sampling d x args):samps) ((getConds x args d) ++ conds) k'
+      Ite b e1 e2 -> do
+          ret <- check samps conds b
+          case ret of
+            0 -> transPartialLeaf check $  PartialLeaf samps (b:conds) e1 -- b is satisfiable but (not b) is not
+            1 -> transPartialLeaf check $ PartialLeaf samps ((Expr (BoolNot b)):conds) e2 -- b is unsatisfiable but (not b) is satisfiable
+            _ -> do -- both b and (not b) are satisfiable
+                ls1 <- transPartialLeaf check $ PartialLeaf samps (b:conds) e1
+                ls2 <- transPartialLeaf check $ PartialLeaf samps ((Expr (BoolNot b)):conds) e2
+                return (ls1 ++ ls2)
+
+getLeaves :: [PartialLeaf ret] -> [Leaf ret]
+getLeaves lvs = map go lvs
+    where
+        go :: PartialLeaf ret -> Leaf ret
+        go (PartialLeaf samps conds (Ret e)) = Leaf samps conds e
+        go _ = error "bad partial leaf!"
+
+
+commandToLeaves :: Command ret -> IO [Leaf ret]
+commandToLeaves c = do
+    let check = (\_ _ _ -> return 2)
+    plvs <- transPartialLeaf check (PartialLeaf [] [] c)
+    return $ getLeaves plvs
+    
+   
+
+
+-- Final Leaves
+
 -- equality is syntactic
 instance Eq Sampling where
     (==) (Sampling distr name args) (Sampling distr' name' args') =
@@ -28,20 +68,6 @@ ppLeaf (Leaf samps conds ret) = "Samplings: " ++ (concatMap ppSampling samps) ++
 
 ppLeaves :: [Leaf ret] -> String
 ppLeaves e = concatMap ppLeaf e
-
-commandToLeaves :: Command rtp -> [Leaf rtp]
-commandToLeaves cmd =
-    case cmd of
-      Ret e -> [Leaf [] [] e]
-      Sampl x d args k ->
-          let lvs = commandToLeaves k in
-          map (\(Leaf samps conds ret) -> Leaf ((Sampling d x args):samps) ((getConds x args d) ++ conds) ret) lvs
-      Ite b c1 c2 ->
-          let lvs1 = commandToLeaves c1 
-              lvs2 = commandToLeaves c2
-              bnot = Expr (BoolNot b) in
-          (map (\(Leaf samps conds ret) -> Leaf samps (b : conds) ret) lvs1) ++
-          (map (\(Leaf samps conds ret) -> Leaf samps (bnot : conds) ret) lvs2)
 
     
 instance Show (Leaf rtp) where

@@ -388,6 +388,7 @@ mkEnv samps = do
     return $ Map.fromList samplpairs
 
 
+{- this will turn into the check
 leafSatisfiable :: Leaf ret -> IO Bool
 leafSatisfiable (Leaf samps conds ret) = do
     runSMT $ do
@@ -400,6 +401,7 @@ leafSatisfiable (Leaf samps conds ret) = do
               Sat -> return True
               Unsat -> return False
               Unk -> fail "unknown"
+-}
 
 -----
 --
