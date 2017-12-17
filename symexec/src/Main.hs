@@ -3,6 +3,7 @@ import Prot.Lang.Lang
 import Prot.Lang.Types
 import Prot.Lang.Expr
 import Prot.Lang.Command
+import Prot.Lang.Analyze
 import Prot.Examples.Rotate
 import Data.SBV
 import Data.Parameterized.Context as Ctx
@@ -37,8 +38,8 @@ tstEnum = do
 
 main :: IO ()
 main = do
-    putStrLn $ ppDist (RPS.pingPong)
-    putStrLn =<< ppSatDistLeaves (RPS.pingPong)
+    putStrLn $ show $ length $ commandToLeaves $ (compileDist RPS.rpsMsg)
+    --putStrLn $ ppDistLeaves (RPS.rpsMsg)
     --putStrLn $ ppProgDag (tstCommand "D" "x")
     --putStrLn =<< ppSatProgLeaves rotateA
     --putStrLn =<< ppSatProgLeaves rotateB

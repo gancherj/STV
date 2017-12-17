@@ -10,18 +10,17 @@ import Data.Parameterized.Some
 rotateA :: Dist (Expr TInt)
 rotateA = do
     let d1 = mkDistr "D" TIntRepr (\_ _ -> [])
-        d2 = unifBool 
     z <- dSamp d1 []
     x <- dSamp d1 [mkSome z]
     dIte (x |<=| 5)
         (do
-            y <- dSamp d2 []
+            y <- unifBool
             dIte y
                 (return (x - 5))
                 (return (x * 2))
         )
         (do
-            y <- dSamp d2 []
+            y <- unifBool
             dIte y
                 (return (x - 3))
                 (return (x - 1))
@@ -30,9 +29,8 @@ rotateA = do
 rotateB :: Dist (Expr TInt)
 rotateB = do
     let d1 = mkDistr "D" TIntRepr (\_ _ -> [])
-        d2 = unifBool 
     z <- dSamp d1 []
-    y <- dSamp d2 []
+    y <- unifBool
     dIte y
         (do
             x <- dSamp d1 [mkSome z]

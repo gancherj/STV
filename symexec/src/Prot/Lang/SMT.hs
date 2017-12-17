@@ -281,12 +281,17 @@ evalExpr emap (Expr (IntEq e1 e2)) = liftM2 (.==) (evalExpr emap e1) (evalExpr e
 evalExpr emap (Expr (IntNeq e1 e2)) = liftM2 (./=) (evalExpr emap e1) (evalExpr emap e2)
 
 evalExpr emap (Expr (MkTuple cr asgn)) = Ctx.traverseWithIndex (\i e -> SI <$> evalExpr emap e) asgn
+
+evalExpr emap (Expr (TupleEq e1 e2)) = do
+    x <- evalExpr emap e1
+    y <- evalExpr emap e2
+    return $ (SomeSInterp (typeOf e1) x) .== (SomeSInterp (typeOf e2) y)
     
-evalExpr emap (Expr (TupleGet _ tup ind tp)) = do
+evalExpr emap (Expr (TupleGet tup ind tp)) = do
     t <- evalExpr emap tup
     return $ unSI $ t Ctx.! ind
     
-evalExpr emap (Expr (TupleSet cr tup ind e)) = do
+evalExpr emap (Expr (TupleSet tup ind e)) = do
     a <- evalExpr emap e
     b <- evalExpr emap tup
     return $ Ctx.update ind (SI a) b

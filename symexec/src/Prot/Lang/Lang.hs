@@ -87,4 +87,13 @@ runDist p = do
     e <- R.runCommand cmd
     return $ R.SomeInterp (typeOf cmd) e
 
+--- abbreviations
+
+unifBool = dSamp unifBoolDistr []
+unifInt x y = dSamp (unifIntDistr x y) []
+
+dSwitch :: ExprEq (Expr a) => Expr a -> Dist b -> [(Expr a, Dist b)] -> Dist b
+dSwitch e def [] = def
+dSwitch e def ((cond,a):as) =
+    dIte (e |==| cond) a (dSwitch e def as)
 

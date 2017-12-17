@@ -85,8 +85,8 @@ evalExpr emap (Expr (IntEq e1 e2)) = (evalExpr emap e1) == (evalExpr emap e2)
 evalExpr emap (Expr (IntNeq e1 e2)) = not $ (evalExpr emap e1) == (evalExpr emap e2)
 
 evalExpr emap (Expr (MkTuple cr asgn)) = F.fmapFC (TI . (evalExpr emap)) asgn
-evalExpr emap (Expr (TupleGet cr tup ind tp)) = unTI $ (evalExpr emap tup) Ctx.! ind
-evalExpr emap (Expr (TupleSet cr tup ind e)) = 
+evalExpr emap (Expr (TupleGet tup ind tp)) = unTI $ (evalExpr emap tup) Ctx.! ind
+evalExpr emap (Expr (TupleSet tup ind e)) = 
     Ctx.update ind (TI $ evalExpr emap e) (evalExpr emap tup)
 
 evalExpr emap (Expr (EnumLit _)) = error "enum dont care"

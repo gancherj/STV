@@ -16,6 +16,9 @@ import qualified Data.Set as Set
 class TypeOf (k :: Type -> *) where
     typeOf :: forall tp. k tp -> TypeRepr tp
 
+class GetCtx (k :: Type -> *) where
+    getCtx :: forall ctx. k (TTuple ctx) -> CtxRepr ctx
+
 data App (f :: Type -> *) (tp :: Type) where
     InLeft :: !(f t1) -> TypeRepr t2 -> App f (TSum t1 t2)
     InRight :: !(f t2) -> TypeRepr t1 -> App f (TSum t1 t2)
@@ -42,8 +45,9 @@ data App (f :: Type -> *) (tp :: Type) where
     IntNeq :: !(f TInt) -> !(f TInt) -> App f TBool
 
     MkTuple :: !(CtxRepr ctx) -> !(Ctx.Assignment f ctx) -> App f (TTuple ctx)
-    TupleGet :: !(CtxRepr ctx) -> !(f (TTuple ctx)) -> !(Ctx.Index ctx tp) -> !(TypeRepr tp) -> App f tp
-    TupleSet :: !(CtxRepr ctx) -> !(f (TTuple ctx)) -> !(Ctx.Index ctx tp) -> !(f tp) -> App f (TTuple ctx)
+    TupleGet :: !(f (TTuple ctx)) -> !(Ctx.Index ctx tp) -> !(TypeRepr tp) -> App f tp
+    TupleSet :: !(f (TTuple ctx)) -> !(Ctx.Index ctx tp) -> !(f tp) -> App f (TTuple ctx)
+    TupleEq ::  !(f (TTuple ctx)) -> !(f (TTuple ctx)) -> App f TBool
 
     EnumLit :: !(TypeableValue a) -> App f (TEnum a)
     EnumEq :: !(TypeableType a) -> !(f (TEnum a)) -> !(f (TEnum a)) -> App f TBool
@@ -86,8 +90,8 @@ instance TypeOf Expr where
     typeOf (Expr (IntEq _ _)) = TBoolRepr
     typeOf (Expr (IntNeq _ _)) = TBoolRepr
     typeOf (Expr (MkTuple cr asgn)) = TTupleRepr cr
-    typeOf (Expr (TupleGet _ cr ind tp)) = tp
-    typeOf (Expr (TupleSet cr _ _ _)) = TTupleRepr cr
+    typeOf (Expr (TupleGet cr ind tp)) = tp
+    typeOf (Expr (TupleSet t _ _)) = Prot.Lang.Expr.typeOf t
     typeOf (Expr (EnumLit x )) = TEnumRepr $ typeableTypeOfValue x 
     typeOf (Expr (EnumEq _ x _)) = TBoolRepr
 
@@ -100,6 +104,14 @@ instance TypeOf Expr where
     typeOf (Expr (ExtractRight e)) =
         case (Prot.Lang.Expr.typeOf e) of
           TSumRepr t1 t2 -> t2
+
+instance GetCtx Expr where
+    getCtx (Expr (MkTuple cr asgn)) = cr
+    getCtx (Expr (TupleSet t _ _)) = getCtx t
+
+instance (GetCtx f) => GetCtx (App f) where
+    getCtx (MkTuple cr asgn) = cr
+    getCtx (TupleSet t _ _) = getCtx t
 
 
 instance ShowF Expr where
@@ -159,8 +171,8 @@ ppExpr (Expr (IntEq e1 e2)) = (ppExpr e1) ++ " == " ++ (ppExpr e2)
 ppExpr (Expr (IntNeq e1 e2)) = (ppExpr e1) ++ " != " ++ (ppExpr e2)
 
 ppExpr (Expr (MkTuple cr asgn)) = show asgn
-ppExpr (Expr (TupleGet _ ag ind tp)) = (ppExpr ag) ++ "[" ++ (show ind) ++ "]"
-ppExpr (Expr (TupleSet cr ag ind val)) = (ppExpr ag) ++ "{" ++ (show ind) ++ " -> " ++ (ppExpr val) ++ "}"
+ppExpr (Expr (TupleGet ag ind tp)) = (ppExpr ag) ++ "[" ++ (show ind) ++ "]"
+ppExpr (Expr (TupleSet ag ind val)) = (ppExpr ag) ++ "{" ++ (show ind) ++ " -> " ++ (ppExpr val) ++ "}"
 
 ppExpr (Expr (EnumLit i)) = show i
 ppExpr (Expr (EnumEq _ x y)) = (ppExpr x) ++ " == " ++ (ppExpr y)
@@ -178,9 +190,19 @@ exprsToCtx es =
               go ctx asgn [] k = k ctx asgn
               go ctx asgn ((SomeExp tr e):vs) k = go (ctx Ctx.%> tr) (asgn Ctx.%> e) vs k
 
-mkTuple :: [SomeExp] -> SomeExp
-mkTuple es = exprsToCtx es $ \ctx asgn ->
-    SomeExp (TTupleRepr ctx) (Expr (MkTuple ctx asgn))
+class MkTuple a b where
+    mkTuple :: a -> b
+
+instance MkTuple (Expr a, Expr b) (Expr (TTuple (Ctx.EmptyCtx Ctx.::> a Ctx.::> b))) where 
+    mkTuple (a,b) =
+        exprsToCtx [mkSome a,mkSome b] $ \ctx asgn ->
+            case (testEquality ctx (Ctx.empty Ctx.%> (Prot.Lang.Expr.typeOf a) Ctx.%> (Prot.Lang.Expr.typeOf b))) of
+              Just Refl -> Expr (MkTuple ctx asgn)
+              Nothing -> error "absurd"
+
+instance MkTuple [SomeExp] SomeExp where
+    mkTuple es = exprsToCtx es $ \ctx asgn ->
+        SomeExp (TTupleRepr ctx) (Expr (MkTuple ctx asgn))
 
 mkTupleRepr :: [Some TypeRepr] -> Some TypeRepr
 mkTupleRepr ts =
@@ -189,12 +211,28 @@ mkTupleRepr ts =
               go [] ctx = Some (TTupleRepr ctx)
               go ((Some tr):ts) ctx = go ts (ctx Ctx.%> tr)
 
+class UnfoldTuple a b where
+    unfoldTuple :: a -> b
+
+instance (KnownRepr TypeRepr a, KnownRepr TypeRepr b) => UnfoldTuple (Expr (TTuple (Ctx.EmptyCtx Ctx.::> a Ctx.::> b))) (Expr a, Expr b) where
+    unfoldTuple tup =
+        let ctx = getCtx tup in
+        case (Ctx.intIndex (fromIntegral 0) (Ctx.size ctx), Ctx.intIndex (fromIntegral 1) (Ctx.size ctx)) of
+          (Just (Some id0), Just (Some id1)) ->
+              let tpr0 = ctx Ctx.! id0 in
+              let tpr1 = ctx Ctx.! id1 in
+              case (testEquality tpr0 (knownRepr :: TypeRepr a), testEquality tpr1 (knownRepr :: TypeRepr b)) of
+                (Just Refl, Just Refl) -> 
+                  (Expr (TupleGet tup id0 tpr0), Expr (TupleGet tup id1 tpr1))
+                _ -> error "absurd"
+          _ -> error "absurd"
+
 
 getIth :: SomeExp -> Int -> SomeExp
 getIth (SomeExp (TTupleRepr ctx) e) i 
  | Just (Some idx) <- Ctx.intIndex (fromIntegral i) (Ctx.size ctx) =
      let tpr = ctx Ctx.! idx in
-         SomeExp tpr (Expr (TupleGet ctx e idx tpr))
+         SomeExp tpr (Expr (TupleGet e idx tpr))
 getIth _ _ = error "bad getIth"
 
 
@@ -204,7 +242,7 @@ setIth (SomeExp (TTupleRepr ctx) e) i (SomeExp stp s)
      let tpr = ctx Ctx.! idx in
      case (testEquality tpr stp) of
        Just Refl ->
-           SomeExp (TTupleRepr ctx) (Expr (TupleSet ctx e idx s))
+           SomeExp (TTupleRepr ctx) (Expr (TupleSet e idx s))
        Nothing -> error "type error in set"
 setIth _ _ _ = error "bad setIth"
 
@@ -235,8 +273,17 @@ e1 |>| e2 = Expr (IntGt e1 e2)
 (|<=|) :: Expr TInt -> Expr TInt -> Expr TBool
 e1 |<=| e2 = Expr (IntLe e1 e2)
 
-(|===|) :: (Typeable a, Eq a, Ord a, Show a, Read a, Data.Data a, SymWord a, HasKind a, SatModel a) => Expr (TEnum a) -> Expr (TEnum a) -> Expr TBool
-e1 |===| e2 = Expr (EnumEq (TypeableType) e1 e2)
+class ExprEq a where
+    (|==|) :: a -> a -> Expr TBool
+
+instance ExprEq (Expr TInt) where
+    e |==| e2 = Expr (IntEq e e2)
+
+instance (Typeable a, Eq a, Ord a, Show a, Read a, Data.Data a, SymWord a, HasKind a, SatModel a) => ExprEq (Expr (TEnum a)) where
+    e |==| e2 = Expr (EnumEq (TypeableType) e e2)
+
+instance ExprEq (Expr (TTuple ctx)) where
+    e |==| e2 = Expr (TupleEq e e2)
 
 enumLit :: (Typeable a, Eq a, Ord a, Show a, Read a, Data.Data a, SymWord a, HasKind a, SatModel a) => a -> Expr (TEnum a)
 enumLit a = Expr (EnumLit (TypeableValue a))
@@ -251,7 +298,7 @@ instance Boolean (Expr TBool) where
 class SynEq (f :: k -> *) where
     synEq :: f a -> f b -> Bool
 
-instance (SynEq f) => SynEq (App f) where
+instance (SynEq f, GetCtx f) => SynEq (App f) where
    synEq (UnitLit) (UnitLit) = True
    synEq (IntLit i) (IntLit i2) = i == i2
    synEq  (IntAdd e1 e2) (IntAdd e1' e2') = (synEq e1 e1') && (synEq e2 e2')
@@ -274,15 +321,15 @@ instance (SynEq f) => SynEq (App f) where
        case testEquality repr repr1 of
           Just Refl -> error "unimp"
           Nothing -> False
-   synEq (TupleGet crepr e ind tr) (TupleGet crepr' e' ind' tr') =
-    case (testEquality tr tr', testEquality crepr crepr') of
-      (Just Refl, Just Refl) -> (synEq e e') && (ind == ind')
-      _ -> False
+   synEq (TupleGet e ind tr) (TupleGet e' ind' tr') =
+       case (testEquality tr tr', testEquality (getCtx e) (getCtx e')) of
+          (Just Refl, Just Refl) -> (synEq e e') && (ind == ind')
+          _ -> False
     
-   synEq (TupleSet repr e ind tup) (TupleSet repr' e' ind' tup') =
-    case (testEquality repr repr') of
-      Just Refl -> (synEq e e') && (Ctx.indexVal ind == Ctx.indexVal ind') && (synEq tup tup')
-      Nothing -> False
+   synEq x@(TupleSet e ind tup) y@(TupleSet e' ind' tup') =
+       case (testEquality (getCtx x) (getCtx y)) of
+          Just Refl -> (synEq e e') && (Ctx.indexVal ind == Ctx.indexVal ind') && (synEq tup tup')
+          Nothing -> False
 
    synEq  _ _ = False
 
@@ -326,8 +373,8 @@ exprSub emap e = go emap e
           go emap (Expr (IntNeq e1 e2)) = Expr (IntNeq (go emap e1) (go emap e2))
 
           go emap (Expr (MkTuple cr asgn)) = Expr (MkTuple cr (F.fmapFC (go emap) asgn))
-          go emap (Expr (TupleGet ctx tup ind etp)) = Expr (TupleGet ctx (go emap tup) ind etp)
-          go emap (Expr (TupleSet ctx tup ind e)) = Expr (TupleSet ctx (go emap tup) ind (go emap e))
+          go emap (Expr (TupleGet tup ind etp)) = Expr (TupleGet (go emap tup) ind etp)
+          go emap (Expr (TupleSet tup ind e)) = Expr (TupleSet (go emap tup) ind (go emap e))
           go emap (Expr (EnumLit i)) = Expr (EnumLit i)
           go emap (Expr (EnumEq t a b)) = Expr (EnumEq t (go emap a) (go emap b))
         
@@ -368,8 +415,8 @@ instance FreeVar (Expr tp) where
     freeVars (Expr (IntNeq e1 e2)) = (freeVars e1) `Set.union` (freeVars e2)
 
     freeVars (Expr (MkTuple _ asgn)) = Set.unions $ toListFC freeVars asgn
-    freeVars (Expr (TupleGet _ tup _ _)) = freeVars tup
-    freeVars (Expr (TupleSet _ tup _ e)) = (freeVars tup) `Set.union` (freeVars e)
+    freeVars (Expr (TupleGet tup _ _)) = freeVars tup
+    freeVars (Expr (TupleSet tup _ e)) = (freeVars tup) `Set.union` (freeVars e)
 
     freeVars (Expr (EnumLit _)) = Set.empty
     freeVars (Expr (EnumEq _ a b)) = (freeVars a) `Set.union` (freeVars b)
@@ -386,3 +433,4 @@ instance FreeVar SomeExp where
 
 instance (FreeVar a) => (FreeVar [a]) where
     freeVars as = Set.unions $ map freeVars as
+

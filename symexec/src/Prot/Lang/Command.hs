@@ -26,11 +26,11 @@ ppDistr (UnifBool) = "{0,1}"
 mkDistr :: String -> TypeRepr tp -> (Expr tp -> [SomeExp] -> [Expr TBool]) -> Distr tp
 mkDistr = SymDistr
 
-unifInt :: Integer -> Integer -> Distr TInt
-unifInt = UnifInt
+unifIntDistr :: Integer -> Integer -> Distr TInt
+unifIntDistr = UnifInt
 
-unifBool :: Distr TBool
-unifBool = UnifBool
+unifBoolDistr :: Distr TBool
+unifBoolDistr = UnifBool
 
 getConds :: String -> [SomeExp] -> Distr tp -> [Expr TBool]
 getConds x es (SymDistr _ tp cs) = cs (mkAtom x tp) es
