@@ -48,7 +48,6 @@ instance TypeOf Distr where
 
 data Command tp where
     Sampl :: forall tp tp2. String -> Distr tp2 -> [SomeExp] -> Command tp -> Command tp
-    Let :: forall tp tp2. String -> Expr tp2 -> Command tp -> Command tp
     Ite :: forall tp. Expr TBool -> Command tp -> Command tp -> Command tp
     Ret :: forall tp. Expr tp -> Command tp
 
@@ -56,7 +55,6 @@ data SomeCommand = forall tp. SomeCommand (TypeRepr tp) (Command tp)
 
 instance TypeOf Command where
     typeOf (Sampl x d args k) = typeOf k
-    typeOf (Let x e k) = typeOf k
     typeOf (Ite e c1 c2) = typeOf c2
     typeOf (Ret e) = typeOf e
 
@@ -67,8 +65,6 @@ printTabs i = "    " ++ (printTabs (i-1))
 ppCommand' :: Int -> Command tp -> String
 ppCommand' i (Sampl x d args k) =
     (printTabs i) ++ x ++ " <- " ++ (ppDistr d) ++ " [" ++ concatMap ppSomeExp args ++ "];\n" ++ (ppCommand' i k)
-ppCommand' i (Let x e k) =
-    (printTabs i) ++ "let " ++ x ++ " = " ++ (ppExpr e) ++ ";\n" ++ (ppCommand' i k)
 ppCommand' i (Ite b e1 e2) =
     (printTabs i) ++ "if " ++ (ppExpr b) ++ " then \n" ++ (ppCommand' (i + 1) e1) ++ "\n" ++ (printTabs i) ++ "else \n" ++ (ppCommand' (i+1) e2)
 ppCommand' i (Ret e) = (printTabs i) ++ "ret " ++ (ppExpr e)
@@ -77,7 +73,6 @@ ppCommand = ppCommand' 0
 
 chainCommand :: Command tp -> (Expr tp -> Command tp2) -> Command tp2
 chainCommand (Sampl x d es k) c2 = Sampl x d es (chainCommand k c2)
-chainCommand (Let x e k) c2 = Let x e (chainCommand k c2)
 chainCommand (Ite e k1 k2) c2 = Ite e (chainCommand k1 c2) (chainCommand k2 c2)
 chainCommand (Ret e) c2 = c2 e
 

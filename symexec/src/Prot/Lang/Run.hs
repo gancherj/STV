@@ -141,7 +141,6 @@ runCommand_ emap (Sampl x (UnifBool) ls k) = do
     let newmap = Map.insert x (SomeInterp TBoolRepr a) emap
     runCommand_ newmap k
 
-runCommand_ emap (Let x e k) = runCommand_ (Map.insert x (SomeInterp (typeOf e) (evalExpr emap e)) emap) k
 runCommand_ emap (Ite b c1 c2) = case (evalExpr emap b) of
                                    True -> runCommand_ emap c1
                                    False -> runCommand_ emap c2

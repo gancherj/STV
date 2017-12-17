@@ -17,6 +17,7 @@ data DistF k where
     DSamp :: Distr tp -> [SomeExp] -> (Expr tp -> k) -> DistF k
     DIte :: Expr TBool -> k -> k -> DistF k
 
+
 instance Functor DistF where
     fmap f (DSamp d es k) = DSamp d es (f . k)
     fmap f (DIte e k1 k2) = DIte e (f k1) (f k2)
@@ -57,8 +58,8 @@ distEquiv :: Dist (Expr tp) -> Dist (Expr tp) -> IO Bool
 distEquiv d1 d2 = do
     let c = compileDist d1
         c' = compileDist d2
-        leaves1_ = map unfoldLets $ commandToLeaves c
-        leaves2_ = map unfoldLets $ commandToLeaves c'
+        leaves1_ = commandToLeaves c
+        leaves2_ = commandToLeaves c'
     leaves1 <- filterM SMT.leafSatisfiable leaves1_
     leaves2 <- filterM SMT.leafSatisfiable leaves2_
     SMT.leavesEquiv (map mkDag leaves1) (map mkDag leaves2)
@@ -73,12 +74,12 @@ ppDistLeaves p =
 
 ppDistDag :: Dist (Expr tp) -> String
 ppDistDag p =
-    ppLeafDags $ map mkDag (map unfoldLets $ commandToLeaves $ compileDist p)
+    ppLeafDags $ map mkDag (commandToLeaves $ compileDist p)
 
 ppSatDistLeaves :: Dist (Expr tp) -> IO String
 ppSatDistLeaves p = do
     let cmd = compileDist p 
-    leaves <- filterM SMT.leafSatisfiable (map unfoldLets $ commandToLeaves cmd)
+    leaves <- filterM SMT.leafSatisfiable (commandToLeaves cmd)
     return $ show leaves
 
 runDist :: Dist (Expr tp) -> IO R.SomeInterp
