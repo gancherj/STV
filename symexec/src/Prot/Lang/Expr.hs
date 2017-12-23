@@ -52,6 +52,8 @@ data App (f :: Type -> *) (tp :: Type) where
     EnumLit :: !(TypeableValue a) -> App f (TEnum a)
     EnumEq :: !(TypeableType a) -> !(f (TEnum a)) -> !(f (TEnum a)) -> App f TBool
 
+    
+
 data Expr tp = Expr !(App Expr tp) | AtomExpr !(Atom tp)
 
 instance SynEq Expr where
@@ -74,44 +76,51 @@ instance IsExpr (Expr (TTuple ctx)) where
 instance TypeOf Expr where
 
     typeOf (AtomExpr (Atom _ t)) = t
-    typeOf (Expr (UnitLit)) = TUnitRepr
-    typeOf (Expr (IntLit _)) = TIntRepr
-    typeOf (Expr (IntAdd _ _)) = TIntRepr
-    typeOf (Expr (IntMul _ _)) = TIntRepr
-    typeOf (Expr (IntNeg _)) = TIntRepr
-    typeOf (Expr (BoolLit _)) = TBoolRepr
-    typeOf (Expr (BoolNot _)) = TBoolRepr
-    typeOf (Expr (BoolAnd _ _)) = TBoolRepr
-    typeOf (Expr (BoolOr _ _)) = TBoolRepr
-    typeOf (Expr (BoolXor _ _)) = TBoolRepr
-    typeOf (Expr (IntLe _ _)) = TBoolRepr
-    typeOf (Expr (IntLt _ _)) = TBoolRepr
-    typeOf (Expr (IntGt _ _)) = TBoolRepr
-    typeOf (Expr (IntEq _ _)) = TBoolRepr
-    typeOf (Expr (IntNeq _ _)) = TBoolRepr
+    typeOf (Expr (UnitLit)) = knownRepr
+    typeOf (Expr (IntLit _)) = knownRepr
+    typeOf (Expr (IntAdd _ _)) = knownRepr
+    typeOf (Expr (IntMul _ _)) = knownRepr
+    typeOf (Expr (IntNeg _)) = knownRepr
+    typeOf (Expr (BoolLit _)) = knownRepr
+    typeOf (Expr (BoolNot _)) = knownRepr
+    typeOf (Expr (BoolAnd _ _)) = knownRepr
+    typeOf (Expr (BoolOr _ _)) = knownRepr
+    typeOf (Expr (BoolXor _ _)) = knownRepr
+    typeOf (Expr (IntLe _ _)) = knownRepr
+    typeOf (Expr (IntLt _ _)) = knownRepr
+    typeOf (Expr (IntGt _ _)) = knownRepr
+    typeOf (Expr (IntEq _ _)) = knownRepr
+    typeOf (Expr (IntNeq _ _)) = knownRepr
     typeOf (Expr (MkTuple cr asgn)) = TTupleRepr cr
     typeOf (Expr (TupleGet cr ind tp)) = tp
     typeOf (Expr (TupleSet t _ _)) = Prot.Lang.Expr.typeOf t
     typeOf (Expr (EnumLit x )) = TEnumRepr $ typeableTypeOfValue x 
-    typeOf (Expr (EnumEq _ x _)) = TBoolRepr
+    typeOf (Expr (EnumEq _ x _)) = knownRepr
 
     typeOf (Expr (InLeft e tr)) = TSumRepr (Prot.Lang.Expr.typeOf e) tr
     typeOf (Expr (InRight e tl)) = TSumRepr tl (Prot.Lang.Expr.typeOf e) 
-    typeOf (Expr (GetActive _)) = TBoolRepr
+    typeOf (Expr (GetActive _)) = knownRepr
     typeOf (Expr (ExtractLeft e)) =
         case (Prot.Lang.Expr.typeOf e) of
           TSumRepr t1 t2 -> t1
     typeOf (Expr (ExtractRight e)) =
         case (Prot.Lang.Expr.typeOf e) of
           TSumRepr t1 t2 -> t2
+    typeOf (Expr (TupleEq _ _)) = knownRepr
 
 instance GetCtx Expr where
     getCtx (Expr (MkTuple cr asgn)) = cr
     getCtx (Expr (TupleSet t _ _)) = getCtx t
+    getCtx (AtomExpr (Atom _ tr)) = getCtx tr
+    getCtx _ = error "unimp"
+
+instance GetCtx TypeRepr where
+    getCtx (TTupleRepr cr) = cr
 
 instance (GetCtx f) => GetCtx (App f) where
     getCtx (MkTuple cr asgn) = cr
     getCtx (TupleSet t _ _) = getCtx t
+    getCtx _ = error "unimp"
 
 
 instance ShowF Expr where
@@ -150,25 +159,28 @@ unSome e k =
     case e of
       (SomeExp tp e) -> k tp e
 
+ppBinop :: Expr tp1 -> Expr tp2 -> String -> String
+ppBinop x y s = (ppExpr x) ++ s ++ (ppExpr y)
+
 ppExpr :: Expr tp -> String
 ppExpr (AtomExpr (Atom x _)) = x
 ppExpr (Expr (UnitLit)) = "()"
 ppExpr (Expr (IntLit i)) = show i
-ppExpr (Expr (IntAdd e1 e2)) = (ppExpr e1) ++ " + " ++ (ppExpr e2)
-ppExpr (Expr (IntMul e1 e2)) = (ppExpr e1) ++ " * " ++ (ppExpr e2)
+ppExpr (Expr (IntAdd e1 e2)) = ppBinop e1 e2 " + "
+ppExpr (Expr (IntMul e1 e2)) = ppBinop e1 e2 " * "
 ppExpr (Expr (IntNeg e1)) = "-" ++ (ppExpr e1) 
 
 ppExpr (Expr (BoolLit e1)) = show e1
-ppExpr (Expr (BoolAnd e1 e2)) = (ppExpr e1) ++ " /\\ " ++ (ppExpr e2)
-ppExpr (Expr (BoolOr e1 e2)) = (ppExpr e1) ++ " \\/ " ++ (ppExpr e2)
-ppExpr (Expr (BoolXor e1 e2)) = (ppExpr e1) ++ " + " ++ (ppExpr e2)
+ppExpr (Expr (BoolAnd e1 e2)) = ppBinop e1 e2 " /\\ "
+ppExpr (Expr (BoolOr e1 e2)) = ppBinop e1 e2 " \\/ "
+ppExpr (Expr (BoolXor e1 e2)) = ppBinop e1 e2 " <+> "
 ppExpr (Expr (BoolNot e1 )) = "not " ++ (ppExpr e1) 
 
-ppExpr (Expr (IntLe e1 e2)) = (ppExpr e1) ++ " <= " ++ (ppExpr e2)
-ppExpr (Expr (IntLt e1 e2)) = (ppExpr e1) ++ " < " ++ (ppExpr e2)
-ppExpr (Expr (IntGt e1 e2)) = (ppExpr e1) ++ " >= " ++ (ppExpr e2)
-ppExpr (Expr (IntEq e1 e2)) = (ppExpr e1) ++ " == " ++ (ppExpr e2)
-ppExpr (Expr (IntNeq e1 e2)) = (ppExpr e1) ++ " != " ++ (ppExpr e2)
+ppExpr (Expr (IntLe e1 e2)) = ppBinop e1 e2 " <= "
+ppExpr (Expr (IntLt e1 e2)) = ppBinop e1 e2 " < "
+ppExpr (Expr (IntGt e1 e2)) = ppBinop e1 e2 " > "
+ppExpr (Expr (IntEq e1 e2)) = ppBinop e1 e2 " == "
+ppExpr (Expr (IntNeq e1 e2)) = ppBinop e1 e2 " != "
 
 ppExpr (Expr (MkTuple cr asgn)) = show asgn
 ppExpr (Expr (TupleGet ag ind tp)) = (ppExpr ag) ++ "[" ++ (show ind) ++ "]"
@@ -181,6 +193,8 @@ ppExpr (Expr (InRight e t)) = "inr " ++ (ppExpr e)
 ppExpr (Expr (GetActive e)) = "getActive " ++ (ppExpr e)
 ppExpr (Expr (ExtractLeft e)) = "exl " ++ (ppExpr e)
 ppExpr (Expr (ExtractRight e)) = "exr " ++ (ppExpr e)
+
+ppExpr (Expr (TupleEq e1 e2)) = ppBinop e1 e2 " == "
 --- utility functions
 
 exprsToCtx :: [SomeExp] -> (forall ctx. CtxRepr ctx -> Ctx.Assignment Expr ctx -> a) -> a
@@ -188,7 +202,7 @@ exprsToCtx es =
     go Ctx.empty Ctx.empty es
         where go :: CtxRepr ctx -> Ctx.Assignment Expr ctx -> [SomeExp] -> (forall ctx'. CtxRepr ctx' -> Ctx.Assignment Expr ctx' -> a) -> a
               go ctx asgn [] k = k ctx asgn
-              go ctx asgn ((SomeExp tr e):vs) k = go (ctx Ctx.%> tr) (asgn Ctx.%> e) vs k
+              go ctx asgn ((SomeExp tr e):vs) k = go (ctx `Ctx.extend` tr) (asgn `Ctx.extend` e) vs k
 
 class MkTuple a b where
     mkTuple :: a -> b
@@ -196,7 +210,7 @@ class MkTuple a b where
 instance MkTuple (Expr a, Expr b) (Expr (TTuple (Ctx.EmptyCtx Ctx.::> a Ctx.::> b))) where 
     mkTuple (a,b) =
         exprsToCtx [mkSome a,mkSome b] $ \ctx asgn ->
-            case (testEquality ctx (Ctx.empty Ctx.%> (Prot.Lang.Expr.typeOf a) Ctx.%> (Prot.Lang.Expr.typeOf b))) of
+            case (testEquality ctx (Ctx.empty `Ctx.extend` (Prot.Lang.Expr.typeOf a) `Ctx.extend` (Prot.Lang.Expr.typeOf b))) of
               Just Refl -> Expr (MkTuple ctx asgn)
               Nothing -> error "absurd"
 
@@ -209,7 +223,7 @@ mkTupleRepr ts =
     go (reverse ts) Ctx.empty
         where go :: [Some TypeRepr] -> CtxRepr ctx -> Some TypeRepr
               go [] ctx = Some (TTupleRepr ctx)
-              go ((Some tr):ts) ctx = go ts (ctx Ctx.%> tr)
+              go ((Some tr):ts) ctx = go ts (ctx `Ctx.extend` tr)
 
 class UnfoldTuple a b where
     unfoldTuple :: a -> b
@@ -384,6 +398,8 @@ exprSub emap e = go emap e
           go emap (Expr (ExtractLeft e)) = Expr (ExtractLeft (go emap e))
           go emap (Expr (ExtractRight e)) = Expr (ExtractRight (go emap e))
 
+          go emap (Expr (TupleEq x y)) = Expr (TupleEq (go emap x) (go emap y))
+
 someExprSub :: Map.Map String SomeExp -> SomeExp -> SomeExp
 someExprSub emap e1 = 
     case e1 of
@@ -426,6 +442,7 @@ instance FreeVar (Expr tp) where
     freeVars (Expr (GetActive e)) = freeVars e
     freeVars (Expr (ExtractLeft e)) = freeVars e
     freeVars (Expr (ExtractRight e)) = freeVars e
+    freeVars (Expr (TupleEq x y)) = (freeVars x) `Set.union` (freeVars y)
 
 
 instance FreeVar SomeExp where
@@ -433,4 +450,5 @@ instance FreeVar SomeExp where
 
 instance (FreeVar a) => (FreeVar [a]) where
     freeVars as = Set.unions $ map freeVars as
+
 
