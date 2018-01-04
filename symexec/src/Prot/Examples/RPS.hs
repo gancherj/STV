@@ -1,42 +1,42 @@
 module Prot.Examples.RPS where
 import Prot.Lang.Expr
-import Prot.Lang.Command
-import Data.SBV
+import qualified Data.SBV as SBV
 import Prot.Lang.Lang
 import Prot.Lang.Types
 import Data.Type.Equality
 import qualified Data.Map.Strict as Map
-import Prot.MPS.MPS
 import Data.Parameterized.Ctx
 import qualified Data.Parameterized.Context as Ctx
+import Prot.MPS.Process
 
-pongParty :: Party (Expr TInt)
-pongParty = Party unitExp react
-    where
-        react :: Expr TUnit -> Expr TInt -> Dist (Expr TUnit, Expr TInt)
-        react _ msg = do
-            x <- unifInt 0 10
-            return (unitExp, msg + x)
+{-
+pingpong = mkChan TIntRepr 3
+pingD = mkChan TIntRepr 4
 
-pingParty :: Party (Expr TInt)
-pingParty = Party unitExp react
-    where
-        react :: Expr TUnit -> Expr TInt -> Dist (Expr TUnit, Expr TInt)
-        react _ msg =
-            dIte (msg |<| 4)
-                (return (unitExp, msg + 2))
-                (return (unitExp, msg * 9))
+pongProcess :: Process TUnit ()
+pongProcess = do
+    m <- recv pingD
+    x <- samp $ unifInt 0 10
+    send pingpong (m + x)
+    m <- recv pingpong
+    x <- samp $ unifInt 0 10
+    send pingD (m + x)
 
 
-pingPongScript = ["ping", "pong", "ping", "pong"]
 
-pingPong :: Dist (Expr TInt)
-pingPong = do
-    (_, m) <- runMPS (Map.fromList [("ping", pingParty), ("pong", pongParty)]) 0 ["ping", "pong", "ping", "pong"]
-    return m
+pingProcess :: Process TUnit ()
+pingProcess = do
+    m <- recv pingpong
+    loopFor 2
+        (ite (m |<| 4)
+            (send pingpong (m + 2))
+            (send pingpong (m * 9)))
+        (return ())
+
+-}
 
 --
-
+{-
 {-
 data Msg = Play (Expr TBool) | Ok | Query | Result (Expr TBool) | Err 
 --data Msg = Play (Expr TBool) | Open | Ok | Query | Result (Expr TBool) | Output (Expr TBool) | Err | Opened (Expr TBool)
@@ -70,7 +70,7 @@ encodeMsg a b = unSome (mkTuple [mkSome $ enumLit a, mkSome $ b]) $ \tr e ->
                       Nothing -> error "absurd"
 
 instance Encodable Msg where
-    encodedTypeRepr = TTupleRepr (Ctx.empty Ctx.%> (TEnumRepr (TypeableType :: TypeableType MsgTag)) Ctx.%> TBoolRepr)
+    encodedTypeRepr = TTupleRepr (Ctx.empty `Ctx.extend` (TEnumRepr (TypeableType :: TypeableType MsgTag)) `Ctx.extend` TBoolRepr)
     encode (Play b) = encodeMsg TPlay b
     encode Ok = encodeMsg TOk false
     encode (Result b) = encodeMsg TResult b
@@ -160,10 +160,12 @@ rpsEnv = Party () rx
 
 rpsScript = ["Z", "A", "F", "A", "Z", "B", "F", "B", "Z", "A", "F", "A", "Z"]
 rpsSystem = 
-    Map.fromList [("Z", rpsEnv), ("A", rpsIdeal "A"), ("B", rpsIdeal "B"), ("F", rpsIdealFunc)]
+    Map.fromList [("Z", rpsEnv), ("A", rpsAdvIdeal "A"), ("B", rpsIdeal "B"), ("F", rpsIdealFunc)]
 
 rpsMsg :: Dist (Expr (TSum TBool TUnit))
 rpsMsg = do
     (_,(m, _)) <- runMPS rpsSystem (encode Ok, "god") rpsScript
     let (m0, m1) = decodeMsg m
     dIte (m0 |==| enumLit TResult) (return $ Expr (InLeft m1 TUnitRepr)) (return $ Expr (InRight unitExp TBoolRepr))
+
+-}

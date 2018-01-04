@@ -35,7 +35,7 @@ dSamp :: Distr tp -> [SomeExp] -> Dist (Expr tp)
 dSamp d args = liftF $ DSamp d args id
 
 dIte :: Expr TBool -> Dist a -> Dist a -> Dist a
-dIte x k1 k2 = 
+dIte x k1 k2 =
     wrap $ DIte x (k1) (k2)
 
 compileDist' :: Dist (Expr tp) -> State Int (Command tp)
@@ -64,7 +64,12 @@ distEquiv d1 d2 = do
     leaves1 <- commandToLeaves SMT.condSatisfiable (compileDist d1)
     leaves2 <- commandToLeaves SMT.condSatisfiable (compileDist d2)
     SMT.leavesEquiv (map mkDag leaves1) (map mkDag leaves2)
-      
+
+numLeaves :: Dist (Expr tp) -> IO Int
+numLeaves d = do
+    lvs <- commandToLeaves SMT.condSatisfiable $ compileDist d
+    return (length lvs)
+
 ppDist :: Dist (Expr tp) -> String
 ppDist p =
     ppCommand (compileDist p)
@@ -81,7 +86,7 @@ ppDistDag p = do
 
 runDist :: Dist (Expr tp) -> IO R.SomeInterp
 runDist p = do
-    let cmd = compileDist p 
+    let cmd = compileDist p
     e <- R.runCommand cmd
     return $ R.SomeInterp (typeOf cmd) e
 
@@ -94,4 +99,3 @@ dSwitch :: ExprEq (Expr a) => Expr a -> Dist b -> [(Expr a, Dist b)] -> Dist b
 dSwitch e def [] = def
 dSwitch e def ((cond,a):as) =
     dIte (e |==| cond) a (dSwitch e def as)
-

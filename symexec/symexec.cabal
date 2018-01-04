@@ -27,7 +27,8 @@ executable symexec
                        graph-matchings,
                        fgl,
                        transformers,
-                       free
+                       free,
+                       type-list
 
   other-modules: Prot.Lang.Expr, Prot.Lang.Types, Prot.Lang.Command, Prot.Lang.Run, Prot.Lang.Analyze, Prot.Lang.SMT, Prot.Lang.Lang, Prot.Examples.RPS, Prot.Examples.Rotate
 

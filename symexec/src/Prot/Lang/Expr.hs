@@ -270,6 +270,9 @@ getTupleElems _ = error "bad getTupleElems"
 ---
 -- instances
 
+intLit :: Integer -> Expr TInt
+intLit = fromInteger
+
 instance Num (Expr TInt) where
     e1 + e2 = Expr (IntAdd e1 e2)
     e1 * e2 = Expr (IntMul e1 e2)
@@ -451,4 +454,24 @@ instance FreeVar SomeExp where
 instance (FreeVar a) => (FreeVar [a]) where
     freeVars as = Set.unions $ map freeVars as
 
+class ArbitraryExpr (tp :: Type) where
+    arbitraryExpr :: Expr tp
+
+instance ArbitraryExpr TInt where
+    arbitraryExpr = 0
+
+instance ArbitraryExpr TBool where
+    arbitraryExpr = false
+
+instance ArbitraryExpr TUnit where
+    arbitraryExpr = unitExp
+
+instance ArbitraryExpr (TTuple ctx) where
+    arbitraryExpr = error "unimp arbitary"
+
+instance ArbitraryExpr (TEnum t) where
+    arbitraryExpr = error "unimp arbitary"
+
+instance (ArbitraryExpr t1, KnownRepr TypeRepr t2) => ArbitraryExpr (TSum t1 t2) where
+    arbitraryExpr = Expr (InLeft (arbitraryExpr) (knownRepr))
 

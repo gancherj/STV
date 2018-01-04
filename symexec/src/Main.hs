@@ -8,8 +8,8 @@ import Prot.Examples.Rotate
 import Data.SBV
 import Data.Parameterized.Context as Ctx
 import qualified Prot.Lang.SMT as SMT
-import qualified Prot.MPS.MPS as MPS
 import qualified Prot.Examples.RPS as RPS
+import qualified Prot.MPS.Process as Pr
 
 {-
 tstTuple :: Prog
@@ -39,8 +39,9 @@ tstEnum = do
 
 main :: IO ()
 main = do
-    putStrLn $ show $ sizeOfDist RPS.rpsMsg
-    putStrLn =<< ppDistLeaves (RPS.rpsMsg)
+    putStrLn "hi"
+    --putStrLn $ show $ sizeOfDist RPS.rpsMsg
+    --putStrLn . show =<< numLeaves (RPS.rpsMsg)
     --putStrLn $ ppProgDag (tstCommand "D" "x")
     --putStrLn =<< ppSatProgLeaves rotateA
     --putStrLn =<< ppSatProgLeaves rotateB

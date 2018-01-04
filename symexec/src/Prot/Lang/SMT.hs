@@ -252,6 +252,10 @@ instance EqSymbolic SomeSInterp where
           Nothing -> false
 
     (.==) (SomeSInterp (TSumRepr t1 t2) _) _ = error "unimp"
+    (.==) (SomeSInterp tr1 _) (SomeSInterp tr2 _) =
+        case (testEquality tr1 tr2) of
+          Just Refl -> error $ "unimplemented symbolic equality for " ++ (show tr1)
+          Nothing -> false
 --    (.==) _ _ = false
 
 evalExpr :: Map.Map String (SomeSInterp) -> Expr tp -> Symbolic (SInterp tp)

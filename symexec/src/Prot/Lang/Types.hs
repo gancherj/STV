@@ -81,6 +81,7 @@ instance KnownRepr TypeRepr TBool where
 instance KnownRepr TypeRepr TUnit where
     knownRepr = TUnitRepr
 
+
 type KnownCtx f = KnownRepr (Ctx.Assignment f)
 
 instance KnownCtx TypeRepr ctx => KnownRepr TypeRepr (TTuple ctx) where
