@@ -39,9 +39,11 @@ tstEnum = do
 
 main :: IO ()
 main = do
-    putStrLn "hi"
-    --putStrLn $ show $ sizeOfDist RPS.rpsMsg
-    --putStrLn . show =<< numLeaves (RPS.rpsMsg)
+    --putStrLn "hi"
+    --putStrLn $ show $ sizeOfDist RPS.distOut
+    --putStrLn . show =<< numLeaves (RPS.distOut)
+    --putStrLn =<< ppDistDag (RPS.distOut)
+    putStrLn . show =<< distEquiv (RPS.distOut) (RPS.distOut2)
     --putStrLn $ ppProgDag (tstCommand "D" "x")
     --putStrLn =<< ppSatProgLeaves rotateA
     --putStrLn =<< ppSatProgLeaves rotateB

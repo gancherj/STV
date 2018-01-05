@@ -3,7 +3,7 @@
 -- Then an experiment is exactly a process with a single output bit port.
 --
 -- A process, on input x, either outputs some y on some interface, or outputs nothing.
-{-# LANGUAGE AllowAmbiguousTypes #-}
+--{-# LANGUAGE AllowAmbiguousTypes #-}
 module Prot.MPS.Process where
 import Prot.Lang.Expr
 import Prot.Lang.Types
@@ -20,11 +20,15 @@ import qualified Data.Map.Strict as Map
 import Control.Monad.Free
 import Control.Monad
 import qualified Data.Set as Set
+import System.IO.Unsafe
+
+tr s k = (unsafePerformIO $ putStrLn s) `seq` k
 
 data Chan tp = Chan (TypeRepr tp) Integer
 
 mkChan :: TypeRepr tp -> Integer -> Chan tp
-mkChan tr 1 = error "Chan ID 1 reserved for distinguisher output."
+mkChan tr 0 = error "Chan ID 0 reserved for distinguisher output."
+mkChan tr (-1) = error "Chan ID -1 reserved for distinguisher invocation."
 mkChan tr i = Chan tr i
 
 instance TestEquality Chan where
@@ -52,8 +56,11 @@ instance Eq SomeChan where
 
 data SomeMsg = forall tp. SomeMsg (Chan tp) (Expr tp)
 
-mkMsg :: Integer -> Expr tp -> SomeMsg
-mkMsg i e = SomeMsg (Chan (typeOf e) i) e
+mkMsgi :: Integer -> Expr tp -> SomeMsg
+mkMsgi i e = SomeMsg (Chan (typeOf e) i) e
+
+mkMsg :: Chan tp -> Expr tp -> SomeMsg
+mkMsg c e = SomeMsg c e
 
 instance Eq SomeMsg where
     (==) (SomeMsg c e) (SomeMsg c' e') =
@@ -70,14 +77,14 @@ instance Functor (ProcessF s) where
 
 type Process s = Free (ProcessF s)
 
-send :: [SomeMsg] -> StateT s Dist [SomeMsg]
-send = return
+send :: Monad m => Chan tp -> Expr tp -> m [SomeMsg]
+send c e = return [mkMsg c e]
 
 listen :: [SomeChan] -> (SomeMsg -> StateT s Dist [SomeMsg]) -> Process s () -> Process s ()
 listen c d k = wrap $ Listen c d k
 
-onInput :: Chan tp -> (Expr tp -> StateT s Dist [SomeMsg]) -> Process s () -> Process s ()
-onInput c d k = wrap $ OnInput c d k
+onInput :: Chan tp -> (Expr tp -> StateT s Dist [SomeMsg]) -> Process s ()
+onInput c d = liftF $ OnInput c d ()
 
 
 data Party = forall s. Party {
@@ -109,7 +116,7 @@ type MPS = Map.Map String Party
 
 getOutput :: [SomeMsg] -> Maybe (Expr TBool)
 getOutput q = do
-    sm <- find (\(SomeMsg (Chan tp i) e) -> i == 1) q
+    sm <- find (\(SomeMsg (Chan tp i) e) -> i == 0) q
     case sm of
       SomeMsg (Chan tp i) e ->
           case testEquality tp TBoolRepr of
@@ -127,17 +134,20 @@ findDeliverable q cm =
       Nothing -> Nothing
           
 
-runMPS :: [SomeMsg] -> ChanMap -> MPS -> Dist (Expr TBool)
-runMPS q cm mps | Just e <- getOutput q = return e
+runMPS_ :: [SomeMsg] -> ChanMap -> MPS -> Dist (Expr TBool)
+runMPS_ q cm mps | Just e <- getOutput q = return e
                 | otherwise = do
-                    case (findDeliverable q cm) of
+                   case (findDeliverable q cm) of
                       Just (s, m, q') ->
                           case (Map.lookup s mps) of
                             Just p -> do
                                 (pnew, qadd) <- runParty m p
-                                runMPS (q' ++ qadd) cm (Map.insert s pnew mps)
+                                tr ("delivering to " ++ s) $ runMPS_ (q' ++ qadd) cm (Map.insert s pnew mps)
                             Nothing -> fail "bad mps"
                       Nothing -> fail "no deliverable message found!"
+
+runMPS :: ChanMap -> MPS -> Dist (Expr TBool)
+runMPS = runMPS_ [mkMsgi (-1) (unitExp)]
 
 
 
@@ -164,26 +174,26 @@ chanSwitch cs e =
 
 mkDistHandler :: [SomeChan] -> SomeExp -> StateT (Integer,[SomeExp]) Dist [SomeMsg]
 mkDistHandler outs msg = do
-    (i,seen) <- get
-    put $ (i-1, (msg : seen))
+    (ctr,seen) <- get
+    put $ (ctr-1, (msg : seen))
     let args = msg : seen
-    case i of
+    case ctr of
       0 -> do
           let outDist = mkDistr "DistOut" TBoolRepr (\_ _ -> [])
           x <- lift $ dSamp outDist args
-          return [(mkMsg 1 x)]
+          return [(mkMsgi 0 x)]
       _ -> do
           i <- lift $ unifInt 0 (fromIntegral $ (length outs) - 1)
           sc <- lift $ chanSwitch outs i
           case sc of
-            SomeChan c@(Chan tp i) -> do
-                let outDist = mkDistr ("Dist" ++ (show i)) tp (\_ _ -> [])
+            SomeChan c@(Chan tp ci) -> do
+                let outDist = mkDistr ("Dist" ++ (show ctr)) tp (\_ _ -> [])
                 x <- lift $ dSamp outDist args
-                return [(mkMsg i x)]
+                return [(mkMsgi ci x)]
 
 mkDistinguisher :: Integer -> [SomeChan] -> [SomeChan] -> Party
 mkDistinguisher i ins outs =
-    Party (i, []) $ listen ins (\(SomeMsg (Chan tp i) e) -> mkDistHandler outs (mkTuple [mkSome $ intLit i, mkSome $ e])) (return ())
+    Party (i, []) $ listen ((SomeChan (Chan TUnitRepr (-1))) : ins) (\(SomeMsg (Chan tp i) e) -> mkDistHandler outs (mkTuple [mkSome $ intLit i, mkSome $ e])) (return ())
     -- input expressions to symD are tuples (chan received, message received)
 
 

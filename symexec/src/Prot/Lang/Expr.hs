@@ -112,7 +112,7 @@ instance GetCtx Expr where
     getCtx (Expr (MkTuple cr asgn)) = cr
     getCtx (Expr (TupleSet t _ _)) = getCtx t
     getCtx (AtomExpr (Atom _ tr)) = getCtx tr
-    getCtx _ = error "unimp"
+    getCtx _ = error "unimp1"
 
 instance GetCtx TypeRepr where
     getCtx (TTupleRepr cr) = cr
@@ -120,7 +120,7 @@ instance GetCtx TypeRepr where
 instance (GetCtx f) => GetCtx (App f) where
     getCtx (MkTuple cr asgn) = cr
     getCtx (TupleSet t _ _) = getCtx t
-    getCtx _ = error "unimp"
+    getCtx _ = error "unimp2"
 
 
 instance ShowF Expr where
@@ -315,6 +315,8 @@ instance Boolean (Expr TBool) where
 class SynEq (f :: k -> *) where
     synEq :: f a -> f b -> Bool
 
+data ExprTup f tp = ExprTup (f tp) (f tp)
+
 instance (SynEq f, GetCtx f) => SynEq (App f) where
    synEq (UnitLit) (UnitLit) = True
    synEq (IntLit i) (IntLit i2) = i == i2
@@ -336,7 +338,10 @@ instance (SynEq f, GetCtx f) => SynEq (App f) where
 
    synEq  (MkTuple repr asgn) (MkTuple repr1 asgn1) =
        case testEquality repr repr1 of
-          Just Refl -> error "unimp"
+          Just Refl -> 
+              let z = Ctx.zipWith (\x y -> ExprTup x y) asgn asgn1
+                  bools = F.toListFC (\(ExprTup x y) -> synEq x y) z in
+              bAnd bools
           Nothing -> False
    synEq (TupleGet e ind tr) (TupleGet e' ind' tr') =
        case (testEquality tr tr', testEquality (getCtx e) (getCtx e')) of
