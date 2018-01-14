@@ -43,7 +43,7 @@ main = do
     --putStrLn $ show $ sizeOfDist RPS.distOut
     --putStrLn . show =<< numLeaves (RPS.distOut)
     --putStrLn =<< ppDistDag (RPS.distOut)
-    putStrLn . show =<< distEquiv (RPS.distOut) (RPS.distOut2)
+    putStrLn . show =<< distEquiv (RPS.fAddOut) (RPS.fAddOut)
     --putStrLn $ ppProgDag (tstCommand "D" "x")
     --putStrLn =<< ppSatProgLeaves rotateA
     --putStrLn =<< ppSatProgLeaves rotateB

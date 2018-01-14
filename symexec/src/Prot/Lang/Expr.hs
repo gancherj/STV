@@ -151,6 +151,21 @@ ppSomeExp (SomeExp _ e) = ppExpr e
 unitExp :: Expr TUnit
 unitExp = Expr (UnitLit)
 
+getActive :: Expr (TSum tp1 tp2) -> Expr TBool
+getActive e = Expr (GetActive e)
+
+extractLeft :: Expr (TSum tp1 tp2) -> Expr tp1
+extractLeft e = Expr (ExtractLeft e)
+
+extractRight :: Expr (TSum tp1 tp2) -> Expr tp2
+extractRight e = Expr (ExtractRight e)
+
+inRight :: KnownRepr TypeRepr tp1 => Expr tp2 -> Expr (TSum tp1 tp2)
+inRight e = Expr (InRight e knownRepr)
+
+inLeft :: KnownRepr TypeRepr tp2 => Expr tp1 -> Expr (TSum tp1 tp2)
+inLeft e = Expr (InLeft e knownRepr)
+
 mkSome :: Expr tp -> SomeExp
 mkSome e = SomeExp (Prot.Lang.Expr.typeOf e) e
 
@@ -292,9 +307,13 @@ e1 |<=| e2 = Expr (IntLe e1 e2)
 
 class ExprEq a where
     (|==|) :: a -> a -> Expr TBool
+    (|!=|) :: a -> a -> Expr TBool
+    a |!=| b =
+        bnot (a |==| b)
 
 instance ExprEq (Expr TInt) where
     e |==| e2 = Expr (IntEq e e2)
+
 
 instance (Typeable a, Eq a, Ord a, Show a, Read a, Data.Data a, SymWord a, HasKind a, SatModel a) => ExprEq (Expr (TEnum a)) where
     e |==| e2 = Expr (EnumEq (TypeableType) e e2)

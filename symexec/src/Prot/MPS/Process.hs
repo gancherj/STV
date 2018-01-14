@@ -77,6 +77,20 @@ instance Functor (ProcessF s) where
 
 type Process s = Free (ProcessF s)
 
+pIte :: Expr TBool -> StateT (Expr s) Dist [SomeMsg] -> StateT (Expr s) Dist [SomeMsg] -> StateT (Expr s) Dist [SomeMsg]
+pIte x k1 k2 = do
+    s <- get
+    (y, s') <- lift $ dIte x 
+                (runStateT k1 s)
+                (runStateT k2 s)
+    put s'
+    return y
+                  
+
+        
+
+
+
 send :: Monad m => Chan tp -> Expr tp -> m [SomeMsg]
 send c e = return [mkMsg c e]
 
