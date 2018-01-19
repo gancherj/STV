@@ -207,8 +207,6 @@ type family SInterp (tp :: Type) :: * where
     SInterp TInt = SInteger
     SInterp TBool = SBool
     SInterp (TTuple ctx) = Ctx.Assignment SInterp' ctx
-    SInterp (TEnum t) = SBV t
-    SInterp (TSum t1 t2) = (SBool, SInterp t1, SInterp t2)
 
 data SInterp' tp = SI { unSI :: SInterp tp }
 
@@ -240,18 +238,11 @@ instance EqSymbolic SomeSInterp where
                               TUnitRepr -> true
                               TIntRepr -> si1 .== si2
                               TBoolRepr -> si1 .== si2
-                              TEnumRepr t -> si1 .== si2
                               TTupleRepr ictx -> (SomeSInterp tp1 si1) .== (SomeSInterp tp1 si2) 
-                              TSumRepr t1 t2 -> case (si1, si2) of
-                                                  ((b,x, y), (b', x', y')) -> -- Symbolic equality only constrained on active site
-                                                      (b .== b' &&& b .== false &&& (SomeSInterp t1 x) .== (SomeSInterp t1 x'))
-                                                      |||
-                                                      (b .== b' &&& b .== true &&& (SomeSInterp t2 y) .== (SomeSInterp t2 y'))
                         Nothing -> false) z in
               bAnd sbools
           Nothing -> false
 
-    (.==) (SomeSInterp (TSumRepr t1 t2) _) _ = error "unimp"
     (.==) (SomeSInterp tr1 _) (SomeSInterp tr2 _) =
         case (testEquality tr1 tr2) of
           Just Refl -> error $ "unimplemented symbolic equality for " ++ (show tr1)
@@ -304,32 +295,6 @@ evalExpr emap (Expr (TupleSet tup ind e)) = do
     b <- evalExpr emap tup
     return $ Ctx.update ind (SI a) b
 
-evalExpr emap (Expr (EnumLit (TypeableValue a))) = return $ literal a
-evalExpr emap (Expr (EnumEq (TypeableType) e1 e2)) = liftM2 (.==) (evalExpr emap e1) (evalExpr emap e2)
-
-evalExpr emap (Expr (InLeft e tp)) = do
-    y <- genFree "rightF" tp
-    x <- evalExpr emap e
-    return $ (false, x, y)
-evalExpr emap (Expr (InRight e tp)) = do
-    x <- genFree "leftF" tp
-    y <- evalExpr emap e
-    return $ (true, x, y)
-evalExpr emap (Expr (GetActive e)) = do
-    t <- evalExpr emap e
-    case t of
-      (b,x,y) -> return b
-
-evalExpr emap (Expr (ExtractLeft e)) = do
-    t <- evalExpr emap e
-    case t of
-      (b,x,y) -> return x
-
-evalExpr emap (Expr (ExtractRight e)) = do
-    t <- evalExpr emap e
-    case t of
-      (b,x,y) -> return y
-
 
 exprEquiv :: [Sampling] -> Expr tp -> Expr tp -> IO Bool
 exprEquiv env e1 e2 = exprEquivUnder env [] e1 e2
@@ -376,12 +341,6 @@ genFree s TUnitRepr = return ()
 genFree s TIntRepr = free_
 genFree s TBoolRepr = free_
 genFree s (TTupleRepr ctx) = Ctx.traverseWithIndex (\i repr -> SI <$> genFree (s ++ (show i)) repr) ctx
-genFree s (TEnumRepr (TypeableType)) = free_
-genFree s (TSumRepr t1 t2) = do
-    b <- free_
-    x <- genFree (s ++ "l") t1
-    y <- genFree (s ++ "r") t2
-    return (b,x,y)
 
 -- atomToSymVar (Atom s tr) = fail  $ "unknown atom type: " ++ (show tr)
 

@@ -10,6 +10,7 @@ import Data.Parameterized.Context as Ctx
 import qualified Prot.Lang.SMT as SMT
 import qualified Prot.Examples.RPS as RPS
 import qualified Prot.MPS.Process as Pr
+import qualified Prot.MPS.ProcessNew as PN
 
 {-
 tstTuple :: Prog
@@ -43,7 +44,9 @@ main = do
     --putStrLn $ show $ sizeOfDist RPS.distOut
     --putStrLn . show =<< numLeaves (RPS.distOut)
     --putStrLn =<< ppDistDag (RPS.distOut)
-    putStrLn . show =<< distEquiv (RPS.fAddOut) (RPS.fAddOut)
+    --putStrLn . show =<< distEquiv (RPS.fAddOut) (RPS.fAddOut)
+    putStrLn . show =<< distEquiv rotateA rotateB
+
     --putStrLn $ ppProgDag (tstCommand "D" "x")
     --putStrLn =<< ppSatProgLeaves rotateA
     --putStrLn =<< ppSatProgLeaves rotateB

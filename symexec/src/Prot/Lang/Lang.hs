@@ -8,7 +8,6 @@ import Data.Type.Equality
 import Data.Parameterized.Some
 import Control.Monad.State
 import qualified Prot.Lang.SMT as SMT
-import qualified Prot.Lang.Run as R
 import Control.Monad.Free
 
 -- I need a better translation language.
@@ -84,11 +83,6 @@ ppDistDag p = do
     lvs <- commandToLeaves SMT.condSatisfiable $ compileDist p
     return $ ppLeafDags $ map mkDag lvs
 
-runDist :: Dist (Expr tp) -> IO R.SomeInterp
-runDist p = do
-    let cmd = compileDist p
-    e <- R.runCommand cmd
-    return $ R.SomeInterp (typeOf cmd) e
 
 --- abbreviations
 

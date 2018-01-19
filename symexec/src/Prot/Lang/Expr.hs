@@ -20,11 +20,6 @@ class GetCtx (k :: Type -> *) where
     getCtx :: forall ctx. k (TTuple ctx) -> CtxRepr ctx
 
 data App (f :: Type -> *) (tp :: Type) where
-    InLeft :: !(f t1) -> TypeRepr t2 -> App f (TSum t1 t2)
-    InRight :: !(f t2) -> TypeRepr t1 -> App f (TSum t1 t2)
-    GetActive :: !(f (TSum t1 t2)) -> App f TBool
-    ExtractLeft :: !(f (TSum t1 t2)) -> App f t1
-    ExtractRight :: !(f (TSum t1 t2)) -> App f t2
 
     UnitLit :: App f TUnit
     IntLit :: !Integer -> App f TInt
@@ -49,8 +44,6 @@ data App (f :: Type -> *) (tp :: Type) where
     TupleSet :: !(f (TTuple ctx)) -> !(Ctx.Index ctx tp) -> !(f tp) -> App f (TTuple ctx)
     TupleEq ::  !(f (TTuple ctx)) -> !(f (TTuple ctx)) -> App f TBool
 
-    EnumLit :: !(TypeableValue a) -> App f (TEnum a)
-    EnumEq :: !(TypeableType a) -> !(f (TEnum a)) -> !(f (TEnum a)) -> App f TBool
 
     
 
@@ -94,18 +87,7 @@ instance TypeOf Expr where
     typeOf (Expr (MkTuple cr asgn)) = TTupleRepr cr
     typeOf (Expr (TupleGet cr ind tp)) = tp
     typeOf (Expr (TupleSet t _ _)) = Prot.Lang.Expr.typeOf t
-    typeOf (Expr (EnumLit x )) = TEnumRepr $ typeableTypeOfValue x 
-    typeOf (Expr (EnumEq _ x _)) = knownRepr
 
-    typeOf (Expr (InLeft e tr)) = TSumRepr (Prot.Lang.Expr.typeOf e) tr
-    typeOf (Expr (InRight e tl)) = TSumRepr tl (Prot.Lang.Expr.typeOf e) 
-    typeOf (Expr (GetActive _)) = knownRepr
-    typeOf (Expr (ExtractLeft e)) =
-        case (Prot.Lang.Expr.typeOf e) of
-          TSumRepr t1 t2 -> t1
-    typeOf (Expr (ExtractRight e)) =
-        case (Prot.Lang.Expr.typeOf e) of
-          TSumRepr t1 t2 -> t2
     typeOf (Expr (TupleEq _ _)) = knownRepr
 
 instance GetCtx Expr where
@@ -151,20 +133,6 @@ ppSomeExp (SomeExp _ e) = ppExpr e
 unitExp :: Expr TUnit
 unitExp = Expr (UnitLit)
 
-getActive :: Expr (TSum tp1 tp2) -> Expr TBool
-getActive e = Expr (GetActive e)
-
-extractLeft :: Expr (TSum tp1 tp2) -> Expr tp1
-extractLeft e = Expr (ExtractLeft e)
-
-extractRight :: Expr (TSum tp1 tp2) -> Expr tp2
-extractRight e = Expr (ExtractRight e)
-
-inRight :: KnownRepr TypeRepr tp1 => Expr tp2 -> Expr (TSum tp1 tp2)
-inRight e = Expr (InRight e knownRepr)
-
-inLeft :: KnownRepr TypeRepr tp2 => Expr tp1 -> Expr (TSum tp1 tp2)
-inLeft e = Expr (InLeft e knownRepr)
 
 mkSome :: Expr tp -> SomeExp
 mkSome e = SomeExp (Prot.Lang.Expr.typeOf e) e
@@ -200,14 +168,6 @@ ppExpr (Expr (IntNeq e1 e2)) = ppBinop e1 e2 " != "
 ppExpr (Expr (MkTuple cr asgn)) = show asgn
 ppExpr (Expr (TupleGet ag ind tp)) = (ppExpr ag) ++ "[" ++ (show ind) ++ "]"
 ppExpr (Expr (TupleSet ag ind val)) = (ppExpr ag) ++ "{" ++ (show ind) ++ " -> " ++ (ppExpr val) ++ "}"
-
-ppExpr (Expr (EnumLit i)) = show i
-ppExpr (Expr (EnumEq _ x y)) = (ppExpr x) ++ " == " ++ (ppExpr y)
-ppExpr (Expr (InLeft e t)) = "inl " ++ (ppExpr e)
-ppExpr (Expr (InRight e t)) = "inr " ++ (ppExpr e)
-ppExpr (Expr (GetActive e)) = "getActive " ++ (ppExpr e)
-ppExpr (Expr (ExtractLeft e)) = "exl " ++ (ppExpr e)
-ppExpr (Expr (ExtractRight e)) = "exr " ++ (ppExpr e)
 
 ppExpr (Expr (TupleEq e1 e2)) = ppBinop e1 e2 " == "
 --- utility functions
@@ -315,14 +275,10 @@ instance ExprEq (Expr TInt) where
     e |==| e2 = Expr (IntEq e e2)
 
 
-instance (Typeable a, Eq a, Ord a, Show a, Read a, Data.Data a, SymWord a, HasKind a, SatModel a) => ExprEq (Expr (TEnum a)) where
-    e |==| e2 = Expr (EnumEq (TypeableType) e e2)
 
 instance ExprEq (Expr (TTuple ctx)) where
     e |==| e2 = Expr (TupleEq e e2)
 
-enumLit :: (Typeable a, Eq a, Ord a, Show a, Read a, Data.Data a, SymWord a, HasKind a, SatModel a) => a -> Expr (TEnum a)
-enumLit a = Expr (EnumLit (TypeableValue a))
 
 instance Boolean (Expr TBool) where
     true = Expr (BoolLit True)
@@ -416,14 +372,7 @@ exprSub emap e = go emap e
           go emap (Expr (MkTuple cr asgn)) = Expr (MkTuple cr (F.fmapFC (go emap) asgn))
           go emap (Expr (TupleGet tup ind etp)) = Expr (TupleGet (go emap tup) ind etp)
           go emap (Expr (TupleSet tup ind e)) = Expr (TupleSet (go emap tup) ind (go emap e))
-          go emap (Expr (EnumLit i)) = Expr (EnumLit i)
-          go emap (Expr (EnumEq t a b)) = Expr (EnumEq t (go emap a) (go emap b))
         
-          go emap (Expr (InLeft e tp)) = Expr (InLeft (go emap e) tp)
-          go emap (Expr (InRight e tp)) = Expr (InRight (go emap e) tp)
-          go emap (Expr (GetActive e)) = Expr (GetActive (go emap e))
-          go emap (Expr (ExtractLeft e)) = Expr (ExtractLeft (go emap e))
-          go emap (Expr (ExtractRight e)) = Expr (ExtractRight (go emap e))
 
           go emap (Expr (TupleEq x y)) = Expr (TupleEq (go emap x) (go emap y))
 
@@ -461,14 +410,6 @@ instance FreeVar (Expr tp) where
     freeVars (Expr (TupleGet tup _ _)) = freeVars tup
     freeVars (Expr (TupleSet tup _ e)) = (freeVars tup) `Set.union` (freeVars e)
 
-    freeVars (Expr (EnumLit _)) = Set.empty
-    freeVars (Expr (EnumEq _ a b)) = (freeVars a) `Set.union` (freeVars b)
-
-    freeVars (Expr (InLeft e _)) = freeVars e
-    freeVars (Expr (InRight e _)) = freeVars e
-    freeVars (Expr (GetActive e)) = freeVars e
-    freeVars (Expr (ExtractLeft e)) = freeVars e
-    freeVars (Expr (ExtractRight e)) = freeVars e
     freeVars (Expr (TupleEq x y)) = (freeVars x) `Set.union` (freeVars y)
 
 
@@ -493,9 +434,5 @@ instance ArbitraryExpr TUnit where
 instance ArbitraryExpr (TTuple ctx) where
     arbitraryExpr = error "unimp arbitary"
 
-instance ArbitraryExpr (TEnum t) where
-    arbitraryExpr = error "unimp arbitary"
 
-instance (ArbitraryExpr t1, KnownRepr TypeRepr t2) => ArbitraryExpr (TSum t1 t2) where
-    arbitraryExpr = Expr (InLeft (arbitraryExpr) (knownRepr))
 

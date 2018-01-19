@@ -4,6 +4,22 @@
 --
 -- A process, on input x, either outputs some y on some interface, or outputs nothing.
 --{-# LANGUAGE AllowAmbiguousTypes #-}
+--
+-- A system is a function from joint state -> message -> distrs on state and messages
+-- Given two MPS's, with bijections between state spaces, one could verify that: given system A and B with bijection f,
+-- for any state s and message m,
+--  A(s,m) is equivalent to
+--
+--  (s',m') <- B(f(s),m)
+--  return (g(s'), m')
+--
+-- and vice versa 
+--
+-- if the above is sound, I don't even need a distinguisher....
+--
+--
+-- TODO create version of below where states are all Exprs in the system, so that the above reasoning would be possible
+
 module Prot.MPS.Process where
 import Prot.Lang.Expr
 import Prot.Lang.Types
