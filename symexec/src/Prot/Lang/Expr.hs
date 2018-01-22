@@ -9,6 +9,7 @@ import qualified Data.Data as Data
 import qualified Data.Map.Strict as Map
 import qualified Data.Parameterized.Context as Ctx
 import Data.Parameterized.Some
+import Data.Parameterized.NatRepr
 import Data.Parameterized.Classes
 import Data.Parameterized.TraversableFC as F
 import qualified Data.Set as Set
@@ -43,6 +44,14 @@ data App (f :: Type -> *) (tp :: Type) where
     TupleGet :: !(f (TTuple ctx)) -> !(Ctx.Index ctx tp) -> !(TypeRepr tp) -> App f tp
     TupleSet :: !(f (TTuple ctx)) -> !(Ctx.Index ctx tp) -> !(f tp) -> App f (TTuple ctx)
     TupleEq ::  !(f (TTuple ctx)) -> !(f (TTuple ctx)) -> App f TBool
+    
+
+    NatLit :: !(NatRepr w) -> App f (TNat w)
+
+    ListBuild :: !(TypeRepr tp) -> !(NatRepr w) -> (forall w'. (w' <= w) => NatRepr w' -> (f tp)) -> App f (TList w tp)
+    ListLen :: !(f (TList w tp)) -> App f TInt
+    ListGetIndex :: (w' <= w) => !(f (TList w tp)) -> !(f (TNat w')) -> App f tp
+    ListSetIndex :: (w' <= w) => !(f (TList w tp)) -> !(f (TNat w')) -> !(f tp) -> App f (TList w tp)
 
 
     
@@ -87,8 +96,23 @@ instance TypeOf Expr where
     typeOf (Expr (MkTuple cr asgn)) = TTupleRepr cr
     typeOf (Expr (TupleGet cr ind tp)) = tp
     typeOf (Expr (TupleSet t _ _)) = Prot.Lang.Expr.typeOf t
-
     typeOf (Expr (TupleEq _ _)) = knownRepr
+    typeOf (Expr (NatLit w)) = TNatRepr w
+
+    typeOf c@(Expr (ListBuild l w f)) = TListRepr w l
+    typeOf (Expr (ListLen _)) = knownRepr
+    typeOf (Expr (ListGetIndex l _)) = listType l
+    typeOf (Expr (ListSetIndex l _ _)) = Prot.Lang.Expr.typeOf l
+
+
+listType :: Expr (TList w tp) -> TypeRepr tp
+listType (Expr (ListBuild l _ _ )) =  l
+listType (Expr (TupleGet _ _ (TListRepr _ t))) = t
+listType (Expr (ListGetIndex l _)) = case listType l of
+                                       TListRepr _ t -> t
+listType (AtomExpr (Atom _ (TListRepr _ t))) = t
+listType (Expr (ListSetIndex l _ _)) = listType l
+
 
 instance GetCtx Expr where
     getCtx (Expr (MkTuple cr asgn)) = cr
@@ -170,6 +194,12 @@ ppExpr (Expr (TupleGet ag ind tp)) = (ppExpr ag) ++ "[" ++ (show ind) ++ "]"
 ppExpr (Expr (TupleSet ag ind val)) = (ppExpr ag) ++ "{" ++ (show ind) ++ " -> " ++ (ppExpr val) ++ "}"
 
 ppExpr (Expr (TupleEq e1 e2)) = ppBinop e1 e2 " == "
+
+ppExpr (Expr (NatLit w)) = show w
+ppExpr (Expr (ListBuild l w f)) = "listBuild"
+ppExpr (Expr (ListLen l)) = "len " ++ (show l) 
+ppExpr (Expr (ListGetIndex l i)) = (show l) ++ "[" ++ (show i) ++ "]"
+ppExpr (Expr (ListSetIndex l i v)) = (show l) ++ "[" ++ (show i) ++ "] := " ++ (show v)
 --- utility functions
 
 exprsToCtx :: [SomeExp] -> (forall ctx. CtxRepr ctx -> Ctx.Assignment Expr ctx -> a) -> a
@@ -376,6 +406,12 @@ exprSub emap e = go emap e
 
           go emap (Expr (TupleEq x y)) = Expr (TupleEq (go emap x) (go emap y))
 
+          go emap (Expr (NatLit i)) = Expr (NatLit i)
+          go emap (Expr (ListBuild l w f)) = Expr (ListBuild l w (\w' -> go emap (f w'))) 
+          go emap (Expr (ListLen l)) = Expr (ListLen (go emap l))
+          go emap (Expr (ListGetIndex f i)) = Expr (ListGetIndex (go emap f) (go emap i))
+          go emap (Expr (ListSetIndex l i v)) = Expr (ListSetIndex (go emap l) (go emap i) (go emap v))
+
 someExprSub :: Map.Map String SomeExp -> SomeExp -> SomeExp
 someExprSub emap e1 = 
     case e1 of
@@ -411,7 +447,13 @@ instance FreeVar (Expr tp) where
     freeVars (Expr (TupleSet tup _ e)) = (freeVars tup) `Set.union` (freeVars e)
 
     freeVars (Expr (TupleEq x y)) = (freeVars x) `Set.union` (freeVars y)
-
+    
+    freeVars (Expr (NatLit _)) = Set.empty
+    freeVars (Expr (ListBuild _ w f)) =
+        Set.unions $ natForEach (knownNat :: NatRepr 0) w (\w' -> freeVars $ f w')
+    freeVars (Expr (ListLen l)) = freeVars l
+    freeVars (Expr (ListGetIndex f i)) = (freeVars f) `Set.union` (freeVars i)
+    freeVars (Expr (ListSetIndex l i v)) = (freeVars l) `Set.union` (freeVars i) `Set.union` (freeVars v)
 
 instance FreeVar SomeExp where
     freeVars (SomeExp tp e) = freeVars e

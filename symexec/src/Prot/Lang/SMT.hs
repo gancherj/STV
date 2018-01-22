@@ -15,10 +15,12 @@ import qualified Data.Graph.Inductive.PatriciaTree as G
 import Data.Parameterized.Ctx 
 import Data.Parameterized.Classes 
 import Data.Parameterized.Some 
+import Data.Parameterized.NatRepr 
 import Data.Parameterized.TraversableFC as F
 import Data.Parameterized.TraversableF as F
 import Control.Monad.Trans.Class
 import Data.Functor.Identity
+import qualified Data.Vector as V
 
 
 -- TODO verify that EqSymbolic is implemented correctly
@@ -205,7 +207,9 @@ leavesEquiv l1 l2 | length l1 /= length l2 = fail "trees have differing numbers 
 type family SInterp (tp :: Type) :: * where
     SInterp TUnit = ()
     SInterp TInt = SInteger
+    SInterp (TNat _) = SInteger
     SInterp TBool = SBool
+    SInterp (TList w tp) = V.Vector (SInterp' tp)
     SInterp (TTuple ctx) = Ctx.Assignment SInterp' ctx
 
 data SInterp' tp = SI { unSI :: SInterp tp }
@@ -234,11 +238,7 @@ instance EqSymbolic SomeSInterp where
                   sbools = F.toListFC (\(ZipZip (ZipInterp tp1 si1) (ZipInterp tp2 si2)) ->
                       case (testEquality tp1 tp2) of
                         Just Refl ->
-                            case tp1 of
-                              TUnitRepr -> true
-                              TIntRepr -> si1 .== si2
-                              TBoolRepr -> si1 .== si2
-                              TTupleRepr ictx -> (SomeSInterp tp1 si1) .== (SomeSInterp tp1 si2) 
+                            (SomeSInterp tp1 si1) .== (SomeSInterp tp1 si2)
                         Nothing -> false) z in
               bAnd sbools
           Nothing -> false
@@ -295,6 +295,43 @@ evalExpr emap (Expr (TupleSet tup ind e)) = do
     b <- evalExpr emap tup
     return $ Ctx.update ind (SI a) b
 
+evalExpr emap (Expr (NatLit i)) = return $ literal (natValue i)
+
+evalExpr emap (Expr (ListBuild (l :: TypeRepr tp) w f)) = do
+    let (es :: [Expr tp]) = natForEach (knownNat :: NatRepr 0) w f
+    (vs :: [SInterp tp]) <- mapM (evalExpr emap) es
+    return $ ((V.fromList (map SI vs)))
+
+evalExpr emap (Expr (ListLen i)) = do
+    v <- evalExpr emap i
+    return $ literal $ fromIntegral $ V.length v
+
+evalExpr emap (Expr (ListGetIndex l i)) = do
+    v <- evalExpr emap l
+    ans <- vectorIndex v i
+    return (unSI ans)
+   
+evalExpr emap (Expr (ListSetIndex l i v)) = do
+    vl <- evalExpr emap l
+    vv <- evalExpr emap v
+    vectorSet vl i (SI vv)
+
+
+vectorIndex :: V.Vector a -> (Expr (TNat w)) -> Symbolic a
+vectorIndex v i = 
+    case i of
+      Expr (NatLit w) ->
+          return $ v V.! (fromInteger $ natValue w)
+      _ ->  
+        error "need to do binary branching etc"
+
+vectorSet :: V.Vector a -> Expr (TNat w) -> a -> Symbolic (V.Vector a)
+vectorSet l i a = 
+    case i of
+      Expr (NatLit w) ->
+          return $ l V.// [(fromInteger $ natValue w, a)]
+      _ -> 
+          error "need to do binary branching etc"
 
 exprEquiv :: [Sampling] -> Expr tp -> Expr tp -> IO Bool
 exprEquiv env e1 e2 = exprEquivUnder env [] e1 e2
@@ -341,10 +378,20 @@ genFree s TUnitRepr = return ()
 genFree s TIntRepr = free_
 genFree s TBoolRepr = free_
 genFree s (TTupleRepr ctx) = Ctx.traverseWithIndex (\i repr -> SI <$> genFree (s ++ (show i)) repr) ctx
+genFree s (TListRepr w tp) = do
+    ls <- sequence $ natForEach (knownNat :: NatRepr 0) w (\i -> SI <$> genFree (s ++ (show i)) tp)
+    return $ V.fromList ls
+genFree s (TNatRepr w) = do
+    v <- free_
+    constrain $ v .>= 0
+    constrain $ v .<= (literal $ natValue w)
+    return v
+
 
 -- atomToSymVar (Atom s tr) = fail  $ "unknown atom type: " ++ (show tr)
 
 
+-- TODO enrich sampling to allow for metadata around types
 
 mkEnv :: [Sampling] -> Symbolic (Map.Map String SomeSInterp)
 mkEnv samps = do

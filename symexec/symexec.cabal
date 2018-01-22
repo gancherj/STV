@@ -28,7 +28,8 @@ executable symexec
                        fgl,
                        transformers,
                        free,
-                       type-list
+                       type-list,
+                       vector
 
   other-modules: Prot.Lang.Expr, Prot.Lang.Types, Prot.Lang.Command, Prot.Lang.Analyze, Prot.Lang.SMT, Prot.Lang.Lang, Prot.Examples.RPS, Prot.Examples.Rotate, Prot.MPS.Process
 

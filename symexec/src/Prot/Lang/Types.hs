@@ -8,31 +8,40 @@ import Data.Parameterized.Ctx
 import Data.SBV
 import Data.Data
 import qualified Data.Parameterized.TH.GADT as U
+import Data.Parameterized.NatRepr
+import GHC.TypeLits
 
 data BaseType where
     BaseInt :: BaseType
+    BaseNat :: Nat -> BaseType
     BaseBool :: BaseType
     BaseUnit :: BaseType
 
 data BaseTypeRepr (tp :: BaseType) :: * where
     BaseIntRepr :: BaseTypeRepr BaseInt
+    BaseNatRepr :: NatRepr w -> BaseTypeRepr (BaseNat w)
     BaseBoolRepr :: BaseTypeRepr BaseBool
     BaseUnitRepr :: BaseTypeRepr BaseUnit
 
 data Type where
     BaseToType :: BaseType -> Type
     TTuple :: Ctx Type -> Type
+    TList :: Nat -> Type -> Type
 
 type BaseToType = 'BaseToType
 type TInt = BaseToType BaseInt
+type TNat w = BaseToType (BaseNat w)
 type TBool = BaseToType BaseBool
 type TTuple = 'TTuple
 type TUnit = BaseToType BaseUnit
+type TList w = 'TList w
 
 data TypeRepr (t :: Type) :: * where
     TIntRepr :: TypeRepr TInt
+    TNatRepr :: NatRepr w -> TypeRepr (TNat w)
     TBoolRepr :: TypeRepr TBool
     TUnitRepr :: TypeRepr TUnit
+    TListRepr :: NatRepr w -> !(TypeRepr tp) -> TypeRepr (TList w tp)
     TTupleRepr :: !(CtxRepr ctx) -> TypeRepr (TTuple ctx)
 
 
@@ -43,9 +52,11 @@ $( return [] )
 
 instance Show (TypeRepr tp) where
     show TUnitRepr = "TUnit"
+    show (TNatRepr w) = "TNat"
     show TIntRepr = "TInt"
     show TBoolRepr = "TBool"
     show (TTupleRepr t) = show t
+    show (TListRepr w t) = "[" ++ (show t) ++ "]"
 
 
 instance ShowF TypeRepr
@@ -69,18 +80,23 @@ instance KnownCtx TypeRepr ctx => KnownRepr TypeRepr (TTuple ctx) where
 instance TestEquality TypeRepr where
     testEquality = $(U.structuralTypeEquality [t|TypeRepr|]
         [(U.TypeApp (U.ConType [t|BaseTypeRepr|]) U.AnyType, [|testEquality|]),
-         (U.TypeApp (U.ConType [t|CtxRepr|]) U.AnyType, [|testEquality|])])
+         (U.TypeApp (U.ConType [t|CtxRepr|]) U.AnyType, [|testEquality|]),
+         (U.TypeApp (U.ConType [t|NatRepr|]) U.AnyType, [|testEquality|]),
+         (U.TypeApp (U.ConType [t|TypeRepr|]) U.AnyType, [|testEquality|])])
+ --        (U.TypeApp (U.TypeApp (U.ConType [t|NatRepr|]) U.AnyType) (U.TypeApp (U.ConType [t|TypeRepr|]) U.AnyType), [|testEquality|])])
 
 
 
 instance TestEquality BaseTypeRepr where
-    testEquality BaseIntRepr BaseIntRepr = Just Refl
-    testEquality BaseBoolRepr BaseBoolRepr = Just Refl
-    testEquality BaseUnitRepr BaseUnitRepr = Just Refl
-    testEquality _ _ = Nothing
+    testEquality = $(U.structuralTypeEquality [t|BaseTypeRepr|]
+        [(U.ConType [t|BaseInt|], [|testEquality|]),
+        (U.ConType [t|BaseBool|], [|testEquality|]),
+        (U.TypeApp (U.ConType [t|NatRepr|]) U.AnyType, [|testEquality|]),
+        (U.ConType [t|BaseUnit|], [|testEquality|])])
 
 instance Show (BaseTypeRepr tp) where
     show (BaseIntRepr) = "Int"
+    show (BaseNatRepr w) = "Nat"
     show (BaseBoolRepr) = "Bool"
     show (BaseUnitRepr) = "Unit"
 
@@ -98,6 +114,7 @@ asBaseType tp =
     case tp of
       TBoolRepr -> AsBaseType BaseBoolRepr
       TIntRepr -> AsBaseType BaseIntRepr
+      TNatRepr w -> AsBaseType (BaseNatRepr w)
       TUnitRepr -> AsBaseType BaseUnitRepr
       _ -> NotBaseType
 
