@@ -1,4 +1,4 @@
-module Prot.Lang.SMT where
+module Prot.Prove.SMT where
 import Prot.Lang.Expr
 import Prot.Lang.Command
 import Prot.Lang.Analyze
@@ -200,7 +200,7 @@ leavesEquiv l1 l2 | length l1 /= length l2 = fail "trees have differing numbers 
 
                     
 
-
+--- SMT Interpretation of language
 
 
 
@@ -338,7 +338,6 @@ exprEquiv env e1 e2 = exprEquivUnder env [] e1 e2
 
 exprEquivUnder :: [Sampling] -> [Expr TBool] -> Expr tp -> Expr tp -> IO Bool
 exprEquivUnder samps conds e1 e2 = do
-    --putStrLn $ "testing " ++ (ppExpr e1) ++ " ?= " ++ (ppExpr e2) ++ " under " ++ (show $ map ppSampling samps)
     runSMT $ do
         env <- mkEnv samps
         ans1 <- evalExpr env e1
@@ -386,12 +385,6 @@ genFree s (TNatRepr w) = do
     constrain $ v .>= 0
     constrain $ v .<= (literal $ natValue w)
     return v
-
-
--- atomToSymVar (Atom s tr) = fail  $ "unknown atom type: " ++ (show tr)
-
-
--- TODO enrich sampling to allow for metadata around types
 
 mkEnv :: [Sampling] -> Symbolic (Map.Map String SomeSInterp)
 mkEnv samps = do

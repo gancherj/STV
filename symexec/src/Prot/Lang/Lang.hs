@@ -7,7 +7,7 @@ import Control.Monad.Except
 import Data.Type.Equality
 import Data.Parameterized.Some
 import Control.Monad.State
-import qualified Prot.Lang.SMT as SMT
+import qualified Prot.Prove.SMT as SMT
 import Control.Monad.Free
 
 -- I need a better translation language.
@@ -57,17 +57,6 @@ freshName = do
     put $ (x + 1)
     return $ "x" ++ (show x)
 
-
-distEquiv :: Dist (Expr tp) -> Dist (Expr tp) -> IO Bool
-distEquiv d1 d2 = do
-    leaves1 <- commandToLeaves SMT.condSatisfiable (compileDist d1)
-    leaves2 <- commandToLeaves SMT.condSatisfiable (compileDist d2)
-    SMT.leavesEquiv (map mkDag leaves1) (map mkDag leaves2)
-
-numLeaves :: Dist (Expr tp) -> IO Int
-numLeaves d = do
-    lvs <- commandToLeaves SMT.condSatisfiable $ compileDist d
-    return (length lvs)
 
 ppDist :: Dist (Expr tp) -> String
 ppDist p =

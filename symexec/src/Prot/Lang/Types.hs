@@ -1,3 +1,4 @@
+-- Type system for language.
 module Prot.Lang.Types where
 
 import Data.Typeable
@@ -118,3 +119,10 @@ asBaseType tp =
       TUnitRepr -> AsBaseType BaseUnitRepr
       _ -> NotBaseType
 
+
+
+class TypeOf (k :: Type -> *) where
+    typeOf :: forall tp. k tp -> TypeRepr tp
+
+class GetCtx (k :: Type -> *) where
+    getCtx :: forall ctx. k (TTuple ctx) -> CtxRepr ctx

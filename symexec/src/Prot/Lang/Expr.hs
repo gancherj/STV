@@ -1,9 +1,8 @@
-{-# LANGUAGE AllowAmbiguousTypes #-}
 module Prot.Lang.Expr where
 import Prot.Lang.Types
 import Data.SBV
 import Data.Type.Equality
-import Data.Typeable
+import Data.Typeable hiding (typeOf)
 import Data.Type.Equality
 import qualified Data.Data as Data
 import qualified Data.Map.Strict as Map
@@ -14,11 +13,6 @@ import Data.Parameterized.Classes
 import Data.Parameterized.TraversableFC as F
 import qualified Data.Set as Set
 
-class TypeOf (k :: Type -> *) where
-    typeOf :: forall tp. k tp -> TypeRepr tp
-
-class GetCtx (k :: Type -> *) where
-    getCtx :: forall ctx. k (TTuple ctx) -> CtxRepr ctx
 
 data App (f :: Type -> *) (tp :: Type) where
 
@@ -95,14 +89,14 @@ instance TypeOf Expr where
     typeOf (Expr (IntNeq _ _)) = knownRepr
     typeOf (Expr (MkTuple cr asgn)) = TTupleRepr cr
     typeOf (Expr (TupleGet cr ind tp)) = tp
-    typeOf (Expr (TupleSet t _ _)) = Prot.Lang.Expr.typeOf t
+    typeOf (Expr (TupleSet t _ _)) = typeOf t
     typeOf (Expr (TupleEq _ _)) = knownRepr
     typeOf (Expr (NatLit w)) = TNatRepr w
 
     typeOf c@(Expr (ListBuild l w f)) = TListRepr w l
     typeOf (Expr (ListLen _)) = knownRepr
     typeOf (Expr (ListGetIndex l _)) = listType l
-    typeOf (Expr (ListSetIndex l _ _)) = Prot.Lang.Expr.typeOf l
+    typeOf (Expr (ListSetIndex l _ _)) = typeOf l
 
 
 listType :: Expr (TList w tp) -> TypeRepr tp
@@ -159,7 +153,7 @@ unitExp = Expr (UnitLit)
 
 
 mkSome :: Expr tp -> SomeExp
-mkSome e = SomeExp (Prot.Lang.Expr.typeOf e) e
+mkSome e = SomeExp (typeOf e) e
 
 unSome :: SomeExp -> (forall tp. TypeRepr tp -> Expr tp -> a) -> a
 unSome e k =
@@ -215,7 +209,7 @@ class MkTuple a b where
 instance MkTuple (Expr a, Expr b) (Expr (TTuple (Ctx.EmptyCtx Ctx.::> a Ctx.::> b))) where 
     mkTuple (a,b) =
         exprsToCtx [mkSome a,mkSome b] $ \ctx asgn ->
-            case (testEquality ctx (Ctx.empty `Ctx.extend` (Prot.Lang.Expr.typeOf a) `Ctx.extend` (Prot.Lang.Expr.typeOf b))) of
+            case (testEquality ctx (Ctx.empty `Ctx.extend` (typeOf a) `Ctx.extend` (typeOf b))) of
               Just Refl -> Expr (MkTuple ctx asgn)
               Nothing -> error "absurd"
 
