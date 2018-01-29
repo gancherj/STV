@@ -15,11 +15,7 @@ import qualified Data.Map.Strict as Map
 import Control.Monad.Free
 import Control.Monad
 import qualified Data.Set as Set
-import System.IO.Unsafe
 import Data.Type.List
-
-
-tr s k = (unsafePerformIO $ putStrLn s) `seq` k
 
 data Chan tp i = Chan (TypeRepr tp) (NatRepr i)
 instance Show (Chan tp i) where
@@ -79,10 +75,14 @@ procConcatOut :: Process st -> Process st2 -> [SomeChan]
 procConcatOut p1 p2 =
     (outChans p1 ++ outChans p2) \\ (inChans p1 ++ inChans p2)
 
+procConcatIn :: Process st -> Process st2 -> [SomeChan]
+procConcatIn p1 p2 = 
+    (inChans p1 ++ inChans p2) \\ (outChans p1 ++ outChans p2)
+
 processConcat :: Process st -> Process st2 -> Process (st, st2)
 processConcat p1 p2 = 
-    Process (inChans p1 ++ inChans p2)
-      (outChans p1 ++ outChans p2)
+    Process (procConcatIn p1 p2)
+      (procConcatOut p1 p2)
       (do {s1 <- initSt p1; s2 <- initSt p2; return (s1, s2)})
       (run (handler p1) (handler p2))
     where

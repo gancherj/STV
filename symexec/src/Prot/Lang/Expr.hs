@@ -272,6 +272,9 @@ getTupleElems _ = error "bad getTupleElems"
 intLit :: Integer -> Expr TInt
 intLit = fromInteger
 
+natLit :: NatRepr i -> Expr (TNat i)
+natLit i = Expr (NatLit i)
+
 instance Num (Expr TInt) where
     e1 + e2 = Expr (IntAdd e1 e2)
     e1 * e2 = Expr (IntMul e1 e2)
