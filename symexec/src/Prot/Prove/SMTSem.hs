@@ -1,5 +1,18 @@
 
-module Prot.Prove.SMTSem where 
+module Prot.Prove.SMTSem (
+    SInterp,
+    SInterp',
+    evalExpr,
+    exprEquiv,
+    genFree,
+    someExpEquivUnder,
+    someExprsEquivUnder,
+    condSatisfiable,
+    mkMap,
+    mkMapForall,
+    genFreeForall)
+   
+   where 
 
 import Prot.Lang.Expr
 import Prot.Lang.Command
@@ -209,12 +222,40 @@ genFree s (TNatRepr w) = do
     constrain $ v .<= (literal $ natValue w)
     return v
 
+genFreeForall :: String -> TypeRepr tp -> Symbolic (SInterp tp)
+genFreeForall s TUnitRepr = return ()
+genFreeForall s TIntRepr = forall_
+genFreeForall s TBoolRepr = forall_
+genFreeForall s (TTupleRepr ctx) = Ctx.traverseWithIndex (\i repr -> SI <$> genFreeForall (s ++ (show i)) repr) ctx
+genFreeForall s (TListRepr w tp) = do
+    ls <- sequence $ natForEach (knownNat :: NatRepr 0) w (\i -> SI <$> genFreeForall (s ++ (show i)) tp)
+    return $ V.fromList ls
+genFreeForall s (TNatRepr w) = do
+    v <- forall_
+    constrain $ v .>= 0
+    constrain $ v .<= (literal $ natValue w)
+    return v
+
 mkEnv :: [Sampling] -> Symbolic (Map.Map String SomeSInterp)
 mkEnv samps = do
     samplpairs <- forM samps $ \(Sampling distr x args) -> do
         let tr = typeOf distr
         sv <- atomToSymVar $ Atom x tr
         return $ (x, SomeSInterp tr sv)
+    return $ Map.fromList samplpairs
+
+mkMap :: [(String, Some TypeRepr)] -> Symbolic (Map.Map String SomeSInterp)
+mkMap ts = do
+    samplpairs <- forM ts $ \(x, Some tp) -> do
+        sv <- genFree x tp
+        return $ (x, SomeSInterp tp sv)
+    return $ Map.fromList samplpairs
+
+mkMapForall :: [(String, Some TypeRepr)] -> Symbolic (Map.Map String SomeSInterp)
+mkMapForall ts = do
+    samplpairs <- forM ts $ \(x, Some tp) -> do
+        sv <- genFreeForall x tp
+        return $ (x, SomeSInterp tp sv)
     return $ Map.fromList samplpairs
 
 
