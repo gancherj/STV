@@ -9,7 +9,14 @@ import Prot.Examples.Rotate
 import Data.SBV
 import Data.Parameterized.Context as Ctx
 import qualified Prot.Examples.RPS as RPS
+import qualified Prot.MPS.Stream as St
+import qualified Prot.Prove.Bisim as B
+import qualified Prot.Prove.SMT as S
 
+t :: Dist (Expr TInt)
+t = do
+    x <- unifInt 0 10
+    return (1 :: Expr TInt)
 
 
 main :: IO ()

@@ -62,6 +62,7 @@ data Leaf ret where
         _leafConds :: [Expr TBool],
         _leafRet :: Expr ret } -> Leaf ret
 
+
 ppLeaf :: Leaf ret -> String
 ppLeaf (Leaf samps conds ret) = "Samplings: " ++ (concatMap ppSampling samps) ++ "\n Conds:" ++  (concatMap (\e -> (ppExpr e) ++ " ") conds) ++ "\n Ret: " ++ (ppExpr ret) ++ "\n \n"
 
@@ -74,88 +75,4 @@ instance Show (Leaf rtp) where
         "Samplings: " ++ (concatMap ppSampling samps) ++ "\n Conds:" ++  (concatMap (\e -> (ppExpr e) ++ " ") conds) ++ "\n Ret: " ++ (ppExpr ret) ++ "\n \n"
 
 
-
-------
---
---
-
-
-
-freeSampsBy :: Set.Set String -> [Sampling] -> [Sampling]
-freeSampsBy varsSeen = filter (\s -> Set.null (freeVars (_sampargs s) Set.\\ varsSeen))
-
-samplingsToDag :: [Sampling] -> [[Sampling]]
-samplingsToDag ss =
-    go Set.empty ss
-        where
-            go :: Set.Set String -> [Sampling] -> [[Sampling]]
-            go varsSeen ss =
-                let freeSamps = freeSampsBy varsSeen ss in
-                case freeSamps of
-                  [] -> if null ss then [] else error $ "bad: still have sampls " ++ (show (map ppSampling ss)) ++ " with varsSeen " ++ show varsSeen
-                  ls -> 
-                      let nextLvls = go (Set.union varsSeen (Set.fromList (map _sampname freeSamps))) (ss \\ freeSamps) in
-                      (freeSamps : nextLvls)
-
-sampNamesByLevel :: [[Sampling]] -> [Set.Set String]
-sampNamesByLevel dag = map (\lvl -> Set.fromList (map _sampname lvl)) dag
-
-sampNamesCumul_ :: [Set.Set String] -> [Set.Set String]
-sampNamesCumul_ ns =
-    case ns of
-      (s : ss) -> 
-          s : (sampNamesCumul_ (map (Set.union s) ss))
-      [] -> []
-
-sampNamesCumul :: [[Sampling]] -> [Set.Set String]
-sampNamesCumul = sampNamesCumul_ . sampNamesByLevel
-
-condsCumul :: [Expr TBool] -> [Set.Set String] -> [[Expr TBool]]
-condsCumul es [] = []
-condsCumul es (l:ls) =
-    (filter (\e -> Set.isSubsetOf (freeVars e) l) es) : (condsCumul es ls)
-
-
-
-data LeafDag ret where
-    LeafDag :: {
-        _leafSampDag :: [[Sampling]],
-        _leafCondsByLvl :: [[Expr TBool]],
-        _leafDagRet :: Expr ret} -> LeafDag ret
-
-mkDag :: Leaf ret -> LeafDag ret
-mkDag (Leaf samps conds ret) =
-    LeafDag dag (condsCumul conds (sampNamesCumul dag)) ret
-        where
-            dag = samplingsToDag samps
-
-dagCompatible :: LeafDag ret -> LeafDag ret -> Bool
-dagCompatible (LeafDag dag _ _) (LeafDag dag' _ _) | length dag /= length dag' = False
-                                                   | otherwise =
-                                                       bAnd $ map (\(l1,l2) -> length l1 == length l2) (zip dag dag')
-
-dagCondLevel :: LeafDag ret -> Int -> [Expr TBool]
-dagCondLevel d i | i >= length (_leafCondsByLvl d) = error "bad i"
-                 | otherwise = (_leafCondsByLvl d) !! i
-
-dagRank :: LeafDag ret -> Int
-dagRank d = length (_leafSampDag d)
-
-ppLeafDags :: [LeafDag ret] -> String
-ppLeafDags dags = concatMap (\dag -> go dag ++ "\n") dags
-    where
-        go :: LeafDag ret -> String
-        go (LeafDag sampdag conds ret) =
-            case sampdag of
-              [] -> "Empty dag with ret = " ++ ppExpr ret
-              _ ->
-                "Sampling dag: (depth " ++ (show $ length sampdag) ++ ") \n" ++
-                concatMap (\samplings -> concatMap (\sampling -> (ppSampling sampling) ++ ", ") samplings ++ "\n") sampdag ++
-                "Final cond: \n" ++
-                    concatMap (\cond -> ppExpr cond ++ "\n") (last conds) ++
-                "Ret: " ++ ppExpr ret ++ "\n"
-
-
-
-----
 

@@ -2,15 +2,17 @@
 module Prot.Prove.SMTSem (
     SInterp,
     SInterp',
+    SomeSInterp(SomeSInterp),
+    Quant(Forall,Exists),
     evalExpr,
+    evalSomeExpr,
     exprEquiv,
-    genFree,
+    genSem,
     someExpEquivUnder,
     someExprsEquivUnder,
     condSatisfiable,
-    mkMap,
-    mkMapForall,
-    genFreeForall)
+    mkEnv,
+    mkSamplEnv)
    
    where 
 
@@ -83,89 +85,88 @@ instance EqSymbolic SomeSInterp where
         case (testEquality tr1 tr2) of
           Just Refl -> error $ "unimplemented symbolic equality for " ++ (show tr1)
           Nothing -> false
---    (.==) _ _ = false
 
-evalExpr :: Map.Map String (SomeSInterp) -> Expr tp -> Symbolic (SInterp tp)
+evalSomeExpr :: Map.Map String SomeSInterp -> SomeExp -> SomeSInterp
+evalSomeExpr emap (SomeExp t e) = SomeSInterp t (evalExpr emap e)
+
+evalExpr :: Map.Map String (SomeSInterp) -> Expr tp -> (SInterp tp)
 evalExpr emap (AtomExpr (Atom x tr)) =
     case Map.lookup x emap of
       Just (SomeSInterp tr2 e) ->
           case testEquality tr tr2 of
-            Just Refl -> return e
+            Just Refl -> e
             _ -> error $ "type error: got " ++ (show tr2) ++ " but expected " ++ (show tr)
       _ -> error $ "not found: " ++ x ++ " in emap " ++ (show emap)
 
-evalExpr emap (Expr (UnitLit)) = return ()
-evalExpr emap (Expr (IntLit i)) = return $ literal i
-evalExpr emap (Expr (IntAdd e1 e2)) = liftM2 (+) (evalExpr emap e1) (evalExpr emap e2)
+evalExpr emap (Expr (UnitLit)) = ()
+evalExpr emap (Expr (IntLit i)) = literal i
+evalExpr emap (Expr (IntAdd e1 e2)) = (+) (evalExpr emap e1) (evalExpr emap e2)
 
-evalExpr emap (Expr (IntMul e1 e2)) = liftM2 (*) (evalExpr emap e1) (evalExpr emap e2)
-evalExpr emap (Expr (IntNeg e1 )) = do
-    e <- evalExpr emap e1
-    return $ -e
+evalExpr emap (Expr (IntMul e1 e2)) = (*) (evalExpr emap e1) (evalExpr emap e2)
+evalExpr emap (Expr (IntNeg e1 )) = - (evalExpr emap e1)
 
-evalExpr emap (Expr (BoolLit b)) = return $ literal b
-evalExpr emap (Expr (BoolAnd b1 b2)) = liftM2 (&&&) (evalExpr emap b1) (evalExpr emap b2)
-evalExpr emap (Expr (BoolOr b1 b2)) = liftM2 (|||) (evalExpr emap b1) (evalExpr emap b2)
-evalExpr emap (Expr (BoolXor b1 b2)) = liftM2 (<+>) (evalExpr emap b1) (evalExpr emap b2)
-evalExpr emap (Expr (BoolNot e1 )) = bnot <$> (evalExpr emap e1) 
+evalExpr emap (Expr (BoolLit b)) = literal b
+evalExpr emap (Expr (BoolAnd b1 b2)) = (&&&) (evalExpr emap b1) (evalExpr emap b2)
+evalExpr emap (Expr (BoolOr b1 b2)) = (|||) (evalExpr emap b1) (evalExpr emap b2)
+evalExpr emap (Expr (BoolXor b1 b2)) = (<+>) (evalExpr emap b1) (evalExpr emap b2)
+evalExpr emap (Expr (BoolNot e1 )) = bnot (evalExpr emap e1) 
 
-evalExpr emap (Expr (IntLe e1 e2)) = liftM2 (.<=) (evalExpr emap e1) (evalExpr emap e2)
-evalExpr emap (Expr (IntLt e1 e2)) = liftM2 (.<) (evalExpr emap e1)  (evalExpr emap e2)
-evalExpr emap (Expr (IntGt e1 e2)) = liftM2 (.>) (evalExpr emap e1) (evalExpr emap e2)
-evalExpr emap (Expr (IntEq e1 e2)) = liftM2 (.==) (evalExpr emap e1) (evalExpr emap e2)
-evalExpr emap (Expr (IntNeq e1 e2)) = liftM2 (./=) (evalExpr emap e1) (evalExpr emap e2)
+evalExpr emap (Expr (IntLe e1 e2)) = (.<=) (evalExpr emap e1) (evalExpr emap e2)
+evalExpr emap (Expr (IntLt e1 e2)) = (.<) (evalExpr emap e1)  (evalExpr emap e2)
+evalExpr emap (Expr (IntGt e1 e2)) = (.>) (evalExpr emap e1) (evalExpr emap e2)
+evalExpr emap (Expr (IntEq e1 e2)) = (.==) (evalExpr emap e1) (evalExpr emap e2)
+evalExpr emap (Expr (IntNeq e1 e2)) = (./=) (evalExpr emap e1) (evalExpr emap e2)
 
-evalExpr emap (Expr (MkTuple cr asgn)) = Ctx.traverseWithIndex (\i e -> SI <$> evalExpr emap e) asgn
+evalExpr emap (Expr (MkTuple cr asgn)) = F.fmapFC (\e -> SI $ evalExpr emap e) asgn
 
-evalExpr emap (Expr (TupleEq e1 e2)) = do
-    x <- evalExpr emap e1
-    y <- evalExpr emap e2
-    return $ (SomeSInterp (typeOf e1) x) .== (SomeSInterp (typeOf e2) y)
+evalExpr emap (Expr (TupleEq e1 e2)) = 
+    let x = evalExpr emap e1
+        y = evalExpr emap e2 in
+    (SomeSInterp (typeOf e1) x) .== (SomeSInterp (typeOf e2) y)
     
-evalExpr emap (Expr (TupleGet tup ind tp)) = do
-    t <- evalExpr emap tup
-    return $ unSI $ t Ctx.! ind
+evalExpr emap (Expr (TupleGet tup ind tp)) = 
+    let t = evalExpr emap tup in
+    unSI $ t Ctx.! ind
     
-evalExpr emap (Expr (TupleSet tup ind e)) = do
-    a <- evalExpr emap e
-    b <- evalExpr emap tup
-    return $ Ctx.update ind (SI a) b
+evalExpr emap (Expr (TupleSet tup ind e)) = 
+    let a = evalExpr emap e
+        b = evalExpr emap tup  in
+    Ctx.update ind (SI a) b
 
-evalExpr emap (Expr (NatLit i)) = return $ literal (natValue i)
+evalExpr emap (Expr (NatLit i)) = literal (natValue i)
 
-evalExpr emap (Expr (ListBuild (l :: TypeRepr tp) w f)) = do
-    let (es :: [Expr tp]) = natForEach (knownNat :: NatRepr 0) w f
-    (vs :: [SInterp tp]) <- mapM (evalExpr emap) es
-    return $ ((V.fromList (map SI vs)))
+evalExpr emap (Expr (ListBuild (l :: TypeRepr tp) w f)) = 
+    error "unimp"
 
-evalExpr emap (Expr (ListLen i)) = do
-    v <- evalExpr emap i
-    return $ literal $ fromIntegral $ V.length v
+evalExpr emap (Expr (ListLen i)) = 
+    let v = evalExpr emap i in
+    literal $ fromIntegral $ V.length v
 
-evalExpr emap (Expr (ListGetIndex l i)) = do
-    v <- evalExpr emap l
-    ans <- vectorIndex v i
-    return (unSI ans)
+evalExpr emap (Expr (ListGetIndex l i)) = 
+    let v = evalExpr emap l
+        ans = vectorIndex v i in
+    (unSI ans)
    
-evalExpr emap (Expr (ListSetIndex l i v)) = do
-    vl <- evalExpr emap l
-    vv <- evalExpr emap v
+evalExpr emap (Expr (ListSetIndex l i v)) = 
+    let vl = evalExpr emap l
+        vv = evalExpr emap v in
     vectorSet vl i (SI vv)
 
 
-vectorIndex :: V.Vector a -> (Expr (TNat w)) -> Symbolic a
+vectorIndex :: V.Vector a -> (Expr (TNat w)) -> a
 vectorIndex v i = 
     case i of
       Expr (NatLit w) ->
-          return $ v V.! (fromInteger $ natValue w)
+          v V.! (fromInteger $ natValue w)
       _ ->  
+        -- will require SBV semantic if-then-else
         error "need to do binary branching etc"
 
-vectorSet :: V.Vector a -> Expr (TNat w) -> a -> Symbolic (V.Vector a)
+vectorSet :: V.Vector a -> Expr (TNat w) -> a -> (V.Vector a)
 vectorSet l i a = 
     case i of
       Expr (NatLit w) ->
-          return $ l V.// [(fromInteger $ natValue w, a)]
+          l V.// [(fromInteger $ natValue w, a)]
       _ -> 
           error "need to do binary branching etc"
 
@@ -175,12 +176,12 @@ exprEquiv env e1 e2 = exprEquivUnder env [] e1 e2
 exprEquivUnder :: [Sampling] -> [Expr TBool] -> Expr tp -> Expr tp -> IO Bool
 exprEquivUnder samps conds e1 e2 = do
     runSMT $ do
-        env <- mkEnv samps
-        ans1 <- evalExpr env e1
-        ans2 <- evalExpr env e2
+        env <- mkSamplEnv samps
+        let ans1 = evalExpr env e1
+            ans2 = evalExpr env e2
         constrain $ (SomeSInterp (typeOf e1) ans1) ./= (SomeSInterp (typeOf e2) ans2)
         forM_ conds $ \cond -> do
-            bc <- evalExpr env cond
+            let bc = evalExpr env cond
             constrain $ bc .== true
         query $ do
             cs <- checkSat
@@ -201,63 +202,53 @@ someExprsEquivUnder emap conds l1 l2 | length l1 /= length l2 = return False
       bools <- mapM (\(e1,e2) -> someExpEquivUnder emap conds e1 e2) (zip l1 l2)
       return $ bAnd bools
 
-
-
-
--- we do case analysis here to not require SymWord on tp
-atomToSymVar :: Atom tp -> Symbolic (SInterp tp)
-atomToSymVar (Atom s tp) = genFree s tp
+data Quant = Forall | Exists
    
-genFree :: String -> TypeRepr tp -> Symbolic (SInterp tp)
-genFree s TUnitRepr = return ()
-genFree s TIntRepr = free_
-genFree s TBoolRepr = free_
-genFree s (TTupleRepr ctx) = Ctx.traverseWithIndex (\i repr -> SI <$> genFree (s ++ (show i)) repr) ctx
-genFree s (TListRepr w tp) = do
-    ls <- sequence $ natForEach (knownNat :: NatRepr 0) w (\i -> SI <$> genFree (s ++ (show i)) tp)
-    return $ V.fromList ls
-genFree s (TNatRepr w) = do
-    v <- free_
-    constrain $ v .>= 0
-    constrain $ v .<= (literal $ natValue w)
-    return v
 
-genFreeForall :: String -> TypeRepr tp -> Symbolic (SInterp tp)
-genFreeForall s TUnitRepr = return ()
-genFreeForall s TIntRepr = forall_
-genFreeForall s TBoolRepr = forall_
-genFreeForall s (TTupleRepr ctx) = Ctx.traverseWithIndex (\i repr -> SI <$> genFreeForall (s ++ (show i)) repr) ctx
-genFreeForall s (TListRepr w tp) = do
-    ls <- sequence $ natForEach (knownNat :: NatRepr 0) w (\i -> SI <$> genFreeForall (s ++ (show i)) tp)
+genForall :: TypeRepr tp -> Symbolic (SInterp tp)
+genForall  TUnitRepr = return ()
+genForall  TIntRepr = forall_
+genForall  TBoolRepr = forall_
+genForall  (TTupleRepr ctx) = Ctx.traverseWithIndex (\i repr -> SI <$> genForall repr) ctx
+genForall  (TListRepr w tp) = do
+    ls <- sequence $ natForEach (knownNat :: NatRepr 0) w (\i -> SI <$> genForall tp)
     return $ V.fromList ls
-genFreeForall s (TNatRepr w) = do
+genForall  (TNatRepr w) = do
     v <- forall_
     constrain $ v .>= 0
     constrain $ v .<= (literal $ natValue w)
     return v
 
-mkEnv :: [Sampling] -> Symbolic (Map.Map String SomeSInterp)
-mkEnv samps = do
-    samplpairs <- forM samps $ \(Sampling distr x args) -> do
-        let tr = typeOf distr
-        sv <- atomToSymVar $ Atom x tr
-        return $ (x, SomeSInterp tr sv)
-    return $ Map.fromList samplpairs
+genExists :: TypeRepr tp -> Symbolic (SInterp tp)
+genExists  TUnitRepr = return ()
+genExists  TIntRepr = exists_
+genExists  TBoolRepr = exists_
+genExists  (TTupleRepr ctx) = Ctx.traverseWithIndex (\i repr -> SI <$> genExists repr) ctx
+genExists  (TListRepr w tp) = do
+    ls <- sequence $ natForEach (knownNat :: NatRepr 0) w (\i -> SI <$> genExists tp)
+    return $ V.fromList ls
+genExists  (TNatRepr w) = do
+    v <- exists_
+    constrain $ v .>= 0
+    constrain $ v .<= (literal $ natValue w)
+    return v
 
-mkMap :: [(String, Some TypeRepr)] -> Symbolic (Map.Map String SomeSInterp)
-mkMap ts = do
-    samplpairs <- forM ts $ \(x, Some tp) -> do
-        sv <- genFree x tp
+genSem :: TypeRepr tp -> Quant -> Symbolic (SInterp tp)
+genSem tp Forall = genForall tp
+genSem tp Exists = genExists tp
+
+
+mkEnv :: [(String, Some TypeRepr, Quant)] -> Symbolic (Map.Map String SomeSInterp)
+mkEnv ts = do
+    samplpairs <- forM ts $ \(x, Some tp, q) -> do
+        sv <- genSem tp q
         return $ (x, SomeSInterp tp sv)
     return $ Map.fromList samplpairs
 
-mkMapForall :: [(String, Some TypeRepr)] -> Symbolic (Map.Map String SomeSInterp)
-mkMapForall ts = do
-    samplpairs <- forM ts $ \(x, Some tp) -> do
-        sv <- genFreeForall x tp
-        return $ (x, SomeSInterp tp sv)
-    return $ Map.fromList samplpairs
-
+mkSamplEnv :: [Sampling] -> Symbolic (Map.Map String SomeSInterp)
+mkSamplEnv samps = do
+    let env = map (\(Sampling d x args) -> (x, Some (typeOf d), Forall)) samps
+    mkEnv env
 
 condSatisfiable :: [Sampling] -> [Expr TBool] -> Expr TBool -> IO Int
 condSatisfiable samps conds b = do
@@ -270,10 +261,11 @@ condSatisfiable samps conds b = do
       (False, False) -> error "absurd"
 
     where
+        go :: [Sampling] -> [Expr TBool] -> Expr TBool -> IO Bool
         go samps conds b = runSMT $ do
-            env <- mkEnv samps 
-            bs <- mapM (evalExpr env) conds
-            bb <- evalExpr env b
+            env <- mkSamplEnv samps 
+            let bs = map (evalExpr env) conds
+            let bb = evalExpr env b
             constrain $ bAnd bs
             constrain $ bb
             query $ do

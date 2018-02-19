@@ -30,6 +30,11 @@ sizeOfDist (Pure e) = 1
 sizeOfDist (Free (DSamp d args k)) = (sizeOfDist $ k (mkAtom "0" (typeOf d)))
 sizeOfDist (Free (DIte b k1 k2)) = (sizeOfDist k1) + (sizeOfDist k2)
 
+distType :: Dist (Expr tp) -> TypeRepr tp
+distType (Pure e) = typeOf e
+distType (Free (DSamp d _ k)) = distType $ k (mkAtom "0" (typeOf d))
+distType (Free (DIte _ k _)) = distType k
+
 dSamp :: Distr tp -> [SomeExp] -> Dist (Expr tp)
 dSamp d args = liftF $ DSamp d args id
 
@@ -48,8 +53,8 @@ compileDist' (Free (DIte b k1 k2)) = do
     cont2 <- compileDist' k2
     return $ Ite b cont1 cont2
 
-compileDist :: Dist (Expr tp) -> Command tp
-compileDist d = evalState (compileDist' d) 0
+compileDist :: Dist (Expr tp) -> (Command tp, Int)
+compileDist d = runState (compileDist' d) 0
 
 freshName :: State Int String
 freshName = do
@@ -60,18 +65,18 @@ freshName = do
 
 ppDist :: Dist (Expr tp) -> String
 ppDist p =
-    ppCommand (compileDist p)
+    let (c, _) = compileDist p in
+    ppCommand c
 
 ppDistLeaves :: Dist (Expr tp) -> IO String
 ppDistLeaves p = do
-    lvs <- commandToLeaves SMT.condSatisfiable $ compileDist p
+    let (c,_) = compileDist p 
+    lvs <- commandToLeaves SMT.condSatisfiable c
     return $ ppLeaves lvs
 
-ppDistDag :: Dist (Expr tp) -> IO String
-ppDistDag p = do
-    lvs <- commandToLeaves SMT.condSatisfiable $ compileDist p
-    return $ ppLeafDags $ map mkDag lvs
-
+getDistVarIdx :: Dist (Expr tp) -> Int
+getDistVarIdx d =
+    let (_, i) = compileDist d in i
 
 --- abbreviations
 
@@ -82,3 +87,9 @@ dSwitch :: ExprEq (Expr a) => Expr a -> Dist b -> [(Expr a, Dist b)] -> Dist b
 dSwitch e def [] = def
 dSwitch e def ((cond,a):as) =
     dIte (e |==| cond) a (dSwitch e def as)
+
+unifElt :: [a] -> Dist a
+unifElt [] = error "empty unif"
+unifElt es = do
+    i <- unifInt 0 (fromIntegral (length es - 1))
+    dSwitch i (return (head es)) $ map (\(i,e) -> (intLit i, return e)) (zip (map fromIntegral [0..(length es - 1)]) es)

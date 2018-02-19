@@ -17,27 +17,24 @@ import Control.Monad
 import qualified Data.Set as Set
 import Data.Type.List
 
-data Chan tp i = Chan (TypeRepr tp) (NatRepr i)
-instance Show (Chan tp i) where
+data Chan tp = Chan (TypeRepr tp) Integer
+instance Show (Chan tp) where
     show (Chan tp i) = show i
 
-data SomeChan = forall tp i. SomeChan (Chan tp i)
+data SomeChan = forall tp. SomeChan (Chan tp)
 
 mkChan :: TypeRepr tp -> Integer -> SomeChan
 mkChan tp i = 
-    case (someNat i) of
-      Just (Some n) -> SomeChan (Chan tp n)
-      Nothing -> error "bad chan"
-
+    SomeChan $ Chan tp i
 
 instance Eq SomeChan where
     (SomeChan (Chan tp i)) == (SomeChan (Chan tp2 i2)) =
-        case (testEquality tp tp2, testEquality i i2) of
-          (Just Refl, Just Refl) -> True
+        case (testEquality tp tp2, i == i2) of
+          (Just Refl, True) -> True
           _ -> False
 
-data Msg tp i = Msg (Chan tp i) (Expr tp)
-data SomeMsg = forall tp i. SomeMsg (Msg tp i)
+data Msg tp = Msg (Chan tp) (Expr tp)
+data SomeMsg = forall tp. SomeMsg (Msg tp)
 instance Show SomeMsg where
     show (SomeMsg (Msg c e)) =
         (show e) ++ " -> " ++ (show c)
@@ -45,16 +42,13 @@ instance Show SomeMsg where
 
 mkMsg :: Expr tp -> Integer -> SomeMsg
 mkMsg e i = 
-    case (someNat i) of
-      Just (Some n) ->
-          SomeMsg (Msg (Chan (typeOf e) n) e)
-      Nothing -> error "bad i"
+    SomeMsg (Msg (Chan (typeOf e) i) e)
           
 
 data Process st  = Process { 
     inChans :: [SomeChan],
     outChans :: [SomeChan],
-    initSt :: (Dist st), 
+    initSt :: (Dist st),
     handler :: (SomeMsg -> st -> Dist (SomeMsg, st))}
 
 send :: SomeChan -> Expr tp -> SomeMsg
@@ -66,8 +60,8 @@ send (SomeChan c@(Chan tp i)) e =
 msgFor :: SomeMsg -> [SomeChan] -> Bool
 msgFor m [] = False
 msgFor m@(SomeMsg (Msg (Chan tp i) _)) ((SomeChan (Chan tp2 i2)) : cs) =
-    case (testEquality tp tp2, testEquality i i2) of
-      (Just Refl, Just Refl) -> True
+    case (testEquality tp tp2, i == i2) of
+      (Just Refl, True) -> True
       _ -> msgFor m cs
 
 
