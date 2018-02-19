@@ -15,8 +15,8 @@ extra-source-files:  README.md
 
 library
   hs-source-dirs:      src
-  exposed-modules:     Prot.Lang.Analyze
-  other-modules:       Prot.Lang.Expr, Prot.Lang.Types, Prot.Lang.Command
+  exposed-modules:     Prot.Lang.Analyze, Prot.Lang.Expr, Prot.Lang.Command
+  other-modules:       Prot.Lang.Types
   default-language:    Haskell2010
   build-depends:       base >= 4.7 && < 5,
                        parameterized-utils,
