@@ -41,7 +41,6 @@ import qualified Data.Vector as V
 --- SMT Interpretation of language
 
 
-
 type family SInterp (tp :: Type) :: * where
     SInterp TUnit = ()
     SInterp TInt = SInteger
@@ -176,7 +175,7 @@ exprEquiv env e1 e2 = exprEquivUnder env [] e1 e2
 exprEquivUnder :: [Sampling] -> [Expr TBool] -> Expr tp -> Expr tp -> IO Bool
 exprEquivUnder samps conds e1 e2 = do
     runSMT $ do
-        env <- mkSamplEnv samps
+        env <- mkSamplEnv True samps
         let ans1 = evalExpr env e1
             ans2 = evalExpr env e2
         constrain $ (SomeSInterp (typeOf e1) ans1) ./= (SomeSInterp (typeOf e2) ans2)
@@ -245,9 +244,9 @@ mkEnv ts = do
         return $ (x, SomeSInterp tp sv)
     return $ Map.fromList samplpairs
 
-mkSamplEnv :: [Sampling] -> Symbolic (Map.Map String SomeSInterp)
-mkSamplEnv samps = do
-    let env = map (\(Sampling d x args) -> (x, Some (typeOf d), Forall)) samps
+mkSamplEnv :: Bool -> [Sampling] -> Symbolic (Map.Map String SomeSInterp)
+mkSamplEnv b samps = do
+    let env = map (\(Sampling d x args) -> (x, Some (typeOf d), if b then Forall else Exists)) samps
     mkEnv env
 
 condSatisfiable :: [Sampling] -> [Expr TBool] -> Expr TBool -> IO Int
@@ -263,7 +262,7 @@ condSatisfiable samps conds b = do
     where
         go :: [Sampling] -> [Expr TBool] -> Expr TBool -> IO Bool
         go samps conds b = runSMT $ do
-            env <- mkSamplEnv samps 
+            env <- mkSamplEnv False samps 
             let bs = map (evalExpr env) conds
             let bb = evalExpr env b
             constrain $ bAnd bs

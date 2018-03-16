@@ -45,6 +45,25 @@ rotateB = do
                 (return (x - 1))
         )
 
+rotateBBug :: Dist (Expr TInt)
+rotateBBug = do
+    let d1 = mkDistr "D" TIntRepr (\_ _ -> [])
+    z <- dSamp d1 []
+    y <- unifBool
+    dIte y
+        (do
+            x <- dSamp d1 [mkSome z]
+            dIte (x |<=| 8)
+                (return (x - 5))
+                (return (x - 3))
+        )
+        (do
+            x <- dSamp d1 [mkSome z]
+            dIte (x |<=| 5)
+                (return (x * 2))
+                (return (x - 1))
+        )
+
 tryComp :: Dist (Expr TInt)
 tryComp = do
     x <- rotateB

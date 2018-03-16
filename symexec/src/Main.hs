@@ -13,13 +13,13 @@ import qualified Prot.MPS.Stream as St
 import qualified Prot.Prove.Bisim as B
 import qualified Prot.Prove.SMT as S
 
-t :: Dist (Expr TInt)
-t = do
+t :: Integer -> Dist (Expr TInt)
+t i = do
     x <- unifInt 0 10
-    return (1 :: Expr TInt)
+    return $ intLit i
 
 
 main :: IO ()
 main = do
-    ans <- distEquiv (RPS.runP3) (RPS.runP3)
+    ans <- distEquiv rotateA rotateB
     putStrLn $ show ans

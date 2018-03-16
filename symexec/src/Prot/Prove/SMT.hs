@@ -1,14 +1,12 @@
 module Prot.Prove.SMT
-    (dagEquiv,
-     leavesEquiv,
-     runLeavesEquiv,
-     module Prot.Prove.SMTSem) where
+    (leavesEquiv, module Prot.Prove.SMTSem) where
 
 import Prot.Lang.Expr
 import Prot.Lang.Command
 import Prot.Lang.Analyze
 import Prot.Lang.Types
 import Data.SBV
+import Data.List
 import Data.SBV.Control
 import Data.Type.Equality
 import Control.Monad
@@ -27,119 +25,117 @@ import Control.Monad.Trans.Class
 import Data.Functor.Identity
 import qualified Data.Vector as V
 import Prot.Prove.SMTSem
+import Control.Monad.IO.Class
+
+import Prot.Prove.Interface
+
+type Matching = Map.Map (String, String) SBool
+type Valuation = Map.Map String SomeSInterp
+
+allPairs :: [a] -> [a] -> [(a,a)]
+allPairs xs ys = do
+  x <- xs
+  y <- ys
+  return $ (x, y)
+
+genMatching :: Leaf ret -> Leaf ret -> Symbolic Matching
+genMatching (Leaf samps _ _) (Leaf samps' _ _) = do
+  kvs <- forM (allPairs samps samps') $ \(s1,s2) -> do
+        (b :: SBool) <- free_
+        return $ ((_sampname s1, _sampname s2),b)
+  return $ Map.fromList kvs
+
+genValuation :: Quant -> Leaf ret -> Leaf ret -> Symbolic (Valuation, Valuation)
+genValuation q (Leaf samps _ _) (Leaf samps' _ _) = do
+    (kvleft :: [(String,SomeSInterp)]) <- forM samps $ \(Sampling dist name _) -> do
+        v <- genSem (typeOf dist) q
+        return $ (name, SomeSInterp (typeOf dist) v)
+    (kvright :: [(String,SomeSInterp)]) <- forM samps' $ \(Sampling dist name _) -> do
+        v <- genSem (typeOf dist) q
+        return $ (name, (SomeSInterp (typeOf dist) v))
+    return (Map.fromList kvleft, Map.fromList kvright)
+
+valuationCompat :: (Valuation, Valuation) -> Matching -> SBool
+valuationCompat (val1, val2) match =
+    let (getBool :: String -> String -> SBool) = 
+            \s1 s2 -> case (Map.lookup s1 val1, Map.lookup s2 val2) of
+                (Just si, Just si') -> si .== si'
+                _ -> error "bad valuation" in
+    bAnd $ map (\(k, b) -> b <=> (getBool (fst k) (snd k))) (Map.assocs match)
+
+condsEquiv :: (Valuation, Valuation) -> Leaf ret -> Leaf ret -> SBool
+condsEquiv (val1, val2) (Leaf _ conds _) (Leaf _ conds' _) = (evalExpr val1 (bAnd conds)) <=> (evalExpr val2 (bAnd conds'))
+
+condsValid :: (Valuation, Valuation) -> Leaf ret -> Leaf ret -> SBool
+condsValid (val1, val2) (Leaf _ conds _) (Leaf _ conds' _) = 
+    ((evalExpr val1 (bAnd conds)) .== (evalExpr val2 (bAnd conds'))) &&& ((evalExpr val1 (bAnd conds)) .== (evalExpr val1 (Expr (BoolLit True))))
+
+
+argsEquiv' :: (Valuation, Valuation) -> [SomeExp] -> [SomeExp] -> SBool
+argsEquiv' (v1, v2) xs ys | length xs /= length ys = false
+                          | otherwise =
+                              bAnd $ map (\i -> evalSomeExpr v1 (xs !! i) .== evalSomeExpr v2 (ys !! i)) [0..(length xs - 1)]
+
+argsEquiv :: (Valuation, Valuation) -> Matching -> Leaf ret -> Leaf ret -> SBool
+argsEquiv vs match (Leaf samps _ _) (Leaf samps' _ _) =
+    bAnd $ map (\((Sampling _ x xargs), (Sampling _ y yargs)) -> 
+        case (Map.lookup (x,y) match) of
+          Nothing -> error "bad"
+          Just b ->
+              b ==> (argsEquiv' vs xargs yargs)) (allPairs samps samps')
+
+retEquiv :: (Valuation, Valuation) -> Leaf ret -> Leaf ret -> SBool
+retEquiv (v1,v2) (Leaf _ _ r) (Leaf _ _ r') = (SomeSInterp (typeOf r) (evalExpr v1 r)) .== (SomeSInterp (typeOf r') (evalExpr v2 r'))
+
+leafEquiv :: Leaf ret -> Leaf ret -> IO Bool
+leafEquiv l1 l2 = do
+    b1 <- isSatisfiable $ do
+        matching <- genMatching l1 l2
+        matchValid <- leafPairMatchValid l1 l2 matching
+        val <- genValuation Exists l1 l2
+        let compat = valuationCompat val matching
+        return $ matchValid &&& compat
+
+    b2 <- isTheorem $ do
+        matching <- genMatching l1 l2
+        matchValid <- leafPairMatchValid l1 l2 matching
+        constrain $ matchValid
+        val <- genValuation Forall l1 l2
+        constrain $ valuationCompat val matching
+        return $ ((condsEquiv val l1 l2) &&& ((condsValid val l1 l2) ==> ((argsEquiv val matching l1 l2) &&& (retEquiv val l1 l2))))
+
+    putStrLn $ "sat: " ++ (show b1) ++ " thm: " ++ (show b2)
+    return $ b1 && b2
+
+
+-- exists a perfect matching by the above relation
+-- This could be made more efficient by an online matching algorithm
+leavesEquiv :: [Leaf ret] -> [Leaf ret] -> IO Bool
+leavesEquiv ls1 ls2 | length ls1 /= length ls2 = return False
+                    | otherwise = do
+                        putStrLn $ "comparing " ++ (show ls1) ++ " and " ++ (show ls2)
+                        let is = [0..(length ls1 - 1)]
+                        equivs_ <- forM is $ \i -> forM is $ \j -> leafEquiv (ls1 !! i) (ls2 !! j)
+                        putStrLn $ "equivs: " ++ show equivs_
+                        let equivs i j = (equivs_ !! i) !! j
+                        isSatisfiable $ do
+                            (m :: [[SBool]]) <- forM is $ \_ -> forM is $ \_ -> exists_
+                            let match i j = (m !! i) !! j
+                                matchValid = bAnd $ map (\(i,j) -> (match i j) ==> (literal $ equivs i j)) (allPairs is is)
+                                matchInj = bAnd $ map (\i -> pbExactly (map (match i) is) 1) is 
+                                matchSur = bAnd $ map (\i -> pbExactly (map (`match` i) is) 1) is 
+                            return $ bAnd [matchValid, matchInj, matchSur]
 
 
 
-data SomeDistr = forall tp. SomeDistr (Distr tp)
-compareSomeDistr :: SomeDistr -> SomeDistr -> Bool
-compareSomeDistr (SomeDistr d1) (SomeDistr d2) =
-    compareDistr d1 d2
 
 
-data Dag ret = Dag {
-            _distrs :: Map.Map String SomeDistr,
-            _vars :: Map.Map String SomeSInterp,
-            _args :: Map.Map String [SomeExp],
-            _conds :: [Expr TBool],
-            _ret :: Expr ret}
 
-getSem :: Dag ret -> String -> SomeSInterp
-getSem (Dag _ v _ _ _) x =
-    case Map.lookup x v of
-      Just s -> s
-      Nothing -> error "bad getsem"
 
-getArgs :: Dag ret -> String -> [SomeExp]
-getArgs (Dag _ _ a _ _) x =
-    case Map.lookup x a of
-      Just es -> es
-      Nothing -> error "bad getargs"
 
-getDistr :: Dag ret -> String -> SomeDistr
-getDistr (Dag d _ _ _ _) x =
-    case Map.lookup x d of
-      Just d -> d
-      Nothing -> error "getdistr"
 
-mkNewDag :: Leaf ret -> Symbolic (Dag ret)
-mkNewDag (Leaf samps conds ret) = do
-    xs <- mkSamplEnv samps
-    return $ Dag dstrs xs args conds ret
-        where
-            dstrs = Map.fromList $ map (\(Sampling d x _) -> (x, SomeDistr d)) samps
-            args = Map.fromList $ map (\(Sampling _ x a) -> (x, a)) samps
 
-mkMatching :: Leaf a -> Leaf a -> Symbolic (Map.Map (String, String) SBool)
-mkMatching (Leaf s _ _) (Leaf s2 _ _) = do
-    let xs = map _sampname s
-        ys = map _sampname s2
-    Map.fromList <$> forM (allPairs xs ys) (\(a,b) ->  free_ >>= (\s -> return ((a,b), s)))
 
-getMatchingRow :: Eq a => Map.Map (a, a) b -> a -> [b]
-getMatchingRow m x =
-    (Map.elems $ Map.filterWithKey (\(a,_) _ -> a == x) m) 
 
-getMatchingCol :: Eq a => Map.Map (a,a) b -> a -> [b]
-getMatchingCol m x =
-    (Map.elems $ Map.filterWithKey (\(_,b) _ -> b == x) m) 
 
-allPairs :: [a] -> [b] -> [(a,b)]
-allPairs [] _ = error "bad"
-allPairs _ [] = error "bad"
-allPairs [x] ys = map (\y -> (x,y)) ys
-allPairs (x:xs) ys = (map (\y -> (x,y)) ys) ++ (allPairs xs ys)
 
--- dagEquiv l1 l2 returns a sbool which says whether l1 is equiv to l2
-dagEquiv :: Leaf rtp -> Leaf rtp -> Symbolic SBool
-dagEquiv l1 l2 = do
-    d1 <- mkNewDag l1
-    d2 <- mkNewDag l2
-    let xs = map _sampname (_leafSamps l1)
-        ys = map _sampname (_leafSamps l2)
-    matching <- mkMatching l1 l2
-
-    -- Each x is matched with exactly one y and vice versa.
-    let b1 = (bAnd $ map (\x -> pbExactly (getMatchingRow matching x) 1) xs)
-    let b2 = (bAnd $ map (\y -> pbExactly (getMatchingCol matching y) 1) ys)
-
-    -- require if x is matched with y, then interp(x) = interp(y)
-    -- require if x is matched with y, then args(x) = args(y)
-    -- require if x is matched with y, then distr(x) = distr(y)
-    let b3 = bAnd $ map (\((a,b),equiv) -> (bAnd $ [
-                        equiv ==> ((getSem d1 a) .== (getSem d2 b)),
-                        equiv ==> ((map (evalSomeExpr (_vars d1)) (getArgs d1 a)) .== (map (evalSomeExpr (_vars d2)) (getArgs d2 b))),
-                        (equiv ==> (literal $ (getDistr d1 a) `compareSomeDistr` (getDistr d2 b)))])
-                    ) $ Map.assocs matching
-
-    -- require conds1 <-> conds2
-    let b4 = ((bAnd $ (map (evalExpr (_vars d1)) (_conds d1))) .== (bAnd $ (map (evalExpr (_vars d2)) (_conds d2))))
-
-    -- require ret1 = ret2
-    let b5 = ((SomeSInterp (typeOf $ _ret d1) (evalExpr (_vars d1) (_ret d1))) .== (SomeSInterp (typeOf $ _ret d1) (evalExpr (_vars d2) (_ret d2))))
-    return $ bAnd [b1, b2, b3, b4, b5]
-
--- perfectMatchingBy xs ys decides if there is a perfect matching between the xs and the ys
-
-leavesEquiv :: [Leaf tp] -> [Leaf tp] -> Symbolic SBool
-leavesEquiv xs ys | length xs /= length ys = fail "bad"
-                          | otherwise = do
-    let is = allPairs [0..(length xs) - 1] [0..(length xs) - 1]
-    matching <- Map.fromList <$> mapM (\(x,y) -> free_ >>= (\s -> return ((x,y), s))) is
-    let rowexact = (bAnd $ map (\i -> pbExactly (getMatchingRow matching i) 1) [0..(length xs)-1])
-    let colexact = (bAnd $ map (\i -> pbExactly (getMatchingCol matching i) 1) [0..(length xs)-1])
-    matchvalid <- bAnd <$> mapM (\((i1,i2), b) -> do
-                                de <- dagEquiv (xs !! i1) (ys !! i2)
-                                return $ b .== de) (Map.assocs matching)
-    return $ bAnd [rowexact, colexact, matchvalid]
-
-runLeavesEquiv :: [Leaf ret] -> [Leaf ret] -> IO Bool
-runLeavesEquiv l1 l2 = runSMT $ do
-    b <- leavesEquiv l1 l2
-    constrain $ b
-    query $ do
-        checkSat >>= \c ->
-            case c of
-              Sat -> return False
-              Unsat -> 
-                  return True
-              Unk -> return False

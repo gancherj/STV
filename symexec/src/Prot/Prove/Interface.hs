@@ -25,6 +25,10 @@ leafPairEqv l r = dagFEqv (extractDag l) (extractDag r) (sampEqvF (extr l) (extr
     where extr = PAnalyze._leafSamps
 -}
 
+(!-!) :: [a] -> Int -> a
+(!-!) xs i | i >= length xs = error $ "bad index: list has " ++ (show $ length xs) ++ " elems but i is " ++ (show i)
+           | otherwise = xs !! i
+
 -- | The New Interface
 leafPairMatchValid :: PAnalyze.Leaf ret -> PAnalyze.Leaf ret -> Map.Map (String, String) SBool -> Symbolic SBool
 leafPairMatchValid l r m = 
@@ -41,22 +45,21 @@ isLeaf _ = false
 
 attachSamp :: [PAnalyze.Sampling] -> [PAnalyze.Sampling] -> DAG.MatchTree -> MatchTreeWithSamp
 attachSamp _ _ (DAG.LeafM) = error "LeafNode"
-attachSamp ls rs (DAG.NodeM l r ch) = NodeMS (ls !! l) (rs !! r) (map (attachSamp ls rs) $ filter (not. isLeaf) ch)
+-- NOTE: I changed l -> l - 1, r -> r - 1
+attachSamp ls rs (DAG.NodeM l r ch) = NodeMS (ls !-! (l - 1)) (rs !-! (r - 1)) (map (attachSamp ls rs) $ filter (not. isLeaf) ch)
 
-onlyOne :: [SBool] -> SBool
-onlyOne bs = (bOr bs) &&& bAnd (map (\b -> b ==> bnot (bOr (delete b bs))) bs)
 
 isInjective :: (Map.Map (String, String) SBool) -> SBool
 isInjective m = 
     let rows = nub $ map (\(a, _) -> a) $ Map.keys m
         extract m x = Map.elems $ Map.filterWithKey (\(a, _) _ -> a == x) m in
-        bAnd (map onlyOne (map (extract m) rows))
+        bAnd (map (`pbExactly` 1) (map (extract m) rows))
 
 isSurjective :: (Map.Map (String, String) SBool) -> SBool
 isSurjective m =
     let cols = nub $ map (\(_, a) -> a) $ Map.keys m
         extract m x = Map.elems $ Map.filterWithKey (\(_, a) _ -> a == x) m in
-        bAnd (map onlyOne (map (extract m) cols))
+        bAnd (map (`pbExactly` 1)  (map (extract m) cols))
 
 isBijective :: (Map.Map (String, String) SBool) -> SBool
 isBijective m = (isInjective m) &&& (isSurjective m)
@@ -93,7 +96,7 @@ extractDag (PAnalyze.Leaf samps _ _)  =
     map (sort . (map (mapS $ map PAnalyze._sampname samps)) . Set.elems . Set.unions. (map PExpr.freeVars) . PAnalyze._sampargs) samps
 
 sampEqvF :: [PAnalyze.Sampling] -> [PAnalyze.Sampling] -> Int -> Int -> Bool
-sampEqvF la lb i j =  distEqvF (la !! (i - 1)) (lb !! (j - 1))
+sampEqvF la lb i j =  distEqvF (la !-! (i - 1)) (lb !-! (j - 1))
 
 distEqvF (PAnalyze.Sampling dl _ _) (PAnalyze.Sampling dr _ _) = PCommand.compareDistr dl dr
 

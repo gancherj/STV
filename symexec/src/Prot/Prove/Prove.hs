@@ -10,21 +10,25 @@ import qualified Prot.MPS.Process as P
 import qualified Data.SBV as SBV
 import qualified Data.Map.Strict as Map
 
-
-
-
 distEquiv :: Dist (Expr tp) -> Dist (Expr tp) -> IO Bool
 distEquiv d1 d2 = do
     let (c, _) = compileDist d1
         (c', _) = compileDist d2
     leaves1 <- commandToLeaves SMT.condSatisfiable c
     leaves2 <- commandToLeaves SMT.condSatisfiable c'
-    SMT.runLeavesEquiv leaves1 leaves2
+    SMT.leavesEquiv leaves1 leaves2
 
-
+{-
 -- equivalence of distributions under the current symbolic environment
-distEquiv_ :: Dist (Expr tp) -> Dist (Expr tp) -> SBV.Symbolic Bool
-distEquiv_ d1 d2 = fail "unimp"
+{-
+distEquiv_ :: Dist (Expr tp) -> Dist (Expr tp) -> IO (SBV.Symbolic SBV.SBool)
+distEquiv_ d1 d2 = do
+    let (c, _) = compileDist d1
+        (c', _) = compileDist d2
+    leaves1 <- commandToLeaves SMT.condSatisfiable c
+    leaves2 <- commandToLeaves SMT.condSatisfiable c'
+    SMT.leavesEquiv leaves1 leaves2
+    -}
 
 numLeaves :: Dist (Expr tp) -> IO Int
 numLeaves d = do
@@ -42,3 +46,4 @@ dynamicDistEquiv_ d1 d2 = error "unimp"
 
 dynamicDistEquivUnder :: Map.Map String SMT.SomeSInterp -> Dist SomeExp -> Dist SomeExp -> SBV.Symbolic Bool
 dynamicDistEquivUnder env d1 d2 = fail "unimp"
+-}
