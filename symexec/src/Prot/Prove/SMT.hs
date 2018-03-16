@@ -104,7 +104,6 @@ leafEquiv l1 l2 = do
         constrain $ valuationCompat val matching
         return $ ((condsEquiv val l1 l2) &&& ((condsValid val l1 l2) ==> ((argsEquiv val matching l1 l2) &&& (retEquiv val l1 l2))))
 
-    putStrLn $ "sat: " ++ (show b1) ++ " thm: " ++ (show b2)
     return $ b1 && b2
 
 
@@ -113,10 +112,8 @@ leafEquiv l1 l2 = do
 leavesEquiv :: [Leaf ret] -> [Leaf ret] -> IO Bool
 leavesEquiv ls1 ls2 | length ls1 /= length ls2 = return False
                     | otherwise = do
-                        putStrLn $ "comparing " ++ (show ls1) ++ " and " ++ (show ls2)
                         let is = [0..(length ls1 - 1)]
                         equivs_ <- forM is $ \i -> forM is $ \j -> leafEquiv (ls1 !! i) (ls2 !! j)
-                        putStrLn $ "equivs: " ++ show equivs_
                         let equivs i j = (equivs_ !! i) !! j
                         isSatisfiable $ do
                             (m :: [[SBool]]) <- forM is $ \_ -> forM is $ \_ -> exists_
