@@ -6,10 +6,7 @@ module Prot.Prove.SMTSem (
     Quant(Forall,Exists),
     evalExpr,
     evalSomeExpr,
-    exprEquiv,
     genSem,
-    someExpEquivUnder,
-    someExprsEquivUnder,
     condSatisfiable,
     mkEnv,
     mkSamplEnv)
@@ -26,9 +23,6 @@ import Data.Type.Equality
 import Control.Monad
 import qualified Data.Map.Strict as Map
 import qualified Data.Parameterized.Context as Ctx
-import qualified Data.Graph.Inductive.Query.Matchings as G
-import qualified Data.Graph.Inductive.Graph as G
-import qualified Data.Graph.Inductive.PatriciaTree as G
 import Data.Parameterized.Ctx 
 import Data.Parameterized.Classes 
 import Data.Parameterized.Some 
@@ -169,37 +163,6 @@ vectorSet l i a =
       _ -> 
           error "need to do binary branching etc"
 
-exprEquiv :: [Sampling] -> Expr tp -> Expr tp -> IO Bool
-exprEquiv env e1 e2 = exprEquivUnder env [] e1 e2
-
-exprEquivUnder :: [Sampling] -> [Expr TBool] -> Expr tp -> Expr tp -> IO Bool
-exprEquivUnder samps conds e1 e2 = do
-    runSMT $ do
-        env <- mkSamplEnv True samps
-        let ans1 = evalExpr env e1
-            ans2 = evalExpr env e2
-        constrain $ (SomeSInterp (typeOf e1) ans1) ./= (SomeSInterp (typeOf e2) ans2)
-        forM_ conds $ \cond -> do
-            let bc = evalExpr env cond
-            constrain $ bc .== true
-        query $ do
-            cs <- checkSat
-            case cs of
-              Sat -> return False
-              Unsat -> return True
-              Unk -> fail "unknown"
-
-someExpEquivUnder :: [Sampling] -> [Expr TBool] -> SomeExp -> SomeExp -> IO Bool
-someExpEquivUnder emap conds (SomeExp t1 e1) (SomeExp t2 e2) =
-    case testEquality t1 t2 of
-      Just Refl -> exprEquivUnder emap conds e1 e2
-      Nothing -> return False
-
-someExprsEquivUnder :: [Sampling] -> [Expr TBool] -> [SomeExp] -> [SomeExp] -> IO Bool
-someExprsEquivUnder emap conds l1 l2 | length l1 /= length l2 = return False
-  | otherwise = do
-      bools <- mapM (\(e1,e2) -> someExpEquivUnder emap conds e1 e2) (zip l1 l2)
-      return $ bAnd bools
 
 data Quant = Forall | Exists
    

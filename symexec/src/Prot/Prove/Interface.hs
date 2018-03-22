@@ -30,7 +30,7 @@ leafPairEqv l r = dagFEqv (extractDag l) (extractDag r) (sampEqvF (extr l) (extr
            | otherwise = xs !! i
 
 -- | The New Interface
-leafPairMatchValid :: PAnalyze.Leaf ret -> PAnalyze.Leaf ret -> Map.Map (String, String) SBool -> Symbolic SBool
+leafPairMatchValid :: PAnalyze.Leaf s -> PAnalyze.Leaf t -> Map.Map (String, String) SBool -> Symbolic SBool
 leafPairMatchValid l r m = 
     let extr = PAnalyze._leafSamps
         mt = map (attachSamp (extr l) (extr r)) (DAG.dagFEqvT (extractDag l) (extractDag r) (sampEqvF (extr l) (extr r))) in

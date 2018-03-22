@@ -62,6 +62,7 @@ data Leaf ret where
         _leafConds :: [Expr TBool],
         _leafRet :: Expr ret } -> Leaf ret
 
+data SomeLeaf = forall r. SomeLeaf (Leaf r)
 
 ppLeaf :: Leaf ret -> String
 ppLeaf (Leaf samps conds ret) = "Samplings: " ++ (concatMap ppSampling samps) ++ "\n Conds:" ++  (concatMap (\e -> (ppExpr e) ++ " ") conds) ++ "\n Ret: " ++ (ppExpr ret) ++ "\n \n"

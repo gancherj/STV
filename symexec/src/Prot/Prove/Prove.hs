@@ -1,22 +1,37 @@
 module Prot.Prove.Prove where
 
 import Prot.Lang.Lang
+import Prot.Lang.Types
 import Prot.Lang.Command
 import Prot.Lang.Expr
 import Prot.Lang.Analyze
 import qualified Prot.Prove.SMT as SMT
 import qualified Prot.Prove.SMTSem as SMT
 import qualified Prot.MPS.Process as P
-import qualified Data.SBV as SBV
+import Data.SBV 
 import qualified Data.Map.Strict as Map
 
-distEquiv :: Dist (Expr tp) -> Dist (Expr tp) -> IO Bool
-distEquiv d1 d2 = do
+
+class Equivable dt where
+    isEquiv :: dt -> dt -> IO Bool
+
+instance Equivable (Dist (Expr tp)) where
+    isEquiv d1 d2 = do
+        let (c, _) = compileDist d1
+            (c', _) = compileDist d2
+        leaves1 <- commandToLeaves SMT.condSatisfiable c
+        leaves2 <- commandToLeaves SMT.condSatisfiable c'
+        SMT.leavesEquiv (true, true) (map SomeLeaf leaves1) (map SomeLeaf leaves2)
+
+
+constrainDistEquiv :: (Expr TBool, Expr TBool) -> Dist (Expr tp) -> Dist (Expr tp) -> IO Bool
+constrainDistEquiv cs d1 d2 = do
     let (c, _) = compileDist d1
         (c', _) = compileDist d2
     leaves1 <- commandToLeaves SMT.condSatisfiable c
     leaves2 <- commandToLeaves SMT.condSatisfiable c'
-    SMT.leavesEquiv leaves1 leaves2
+    SMT.leavesEquiv cs (map SomeLeaf leaves1) (map SomeLeaf leaves2)
+    
 
 {-
 -- equivalence of distributions under the current symbolic environment
